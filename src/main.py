@@ -2,7 +2,8 @@
 
 Connects the modules into the pipeline from the project design:
 
-    Process Watcher -> detection modules -> Alert Maker -> Severity Scorer
+    Process Watcher -> detection modules -> Alert Maker -> Event Correlation
+        -> Severity Scorer
         -> LOW / MEDIUM / HIGH : Suggested Action Advisor
         -> CRITICAL            : Protected Process Check -> Auto-Response Module
         -> Logging + Screen Display
@@ -33,6 +34,7 @@ from .alert_maker import AlertMaker
 from .audit_logger import AuditLogger, read_state
 from .auto_response import AutoResponseModule
 from .burst_detector import ProcessBurstDetector
+from .event_correlation import EventCorrelator
 from .exec_location_detector import SuspiciousLocationDetector
 from .models import Alert, Snapshot
 from .owner_detector import OwnerChangeDetector
@@ -88,6 +90,7 @@ class Auditor:
             settings.resource_sustained_cycles,
         )
         self.alert_maker = AlertMaker(self.session_id, settings.alert_cooldown_seconds)
+        self.correlator = EventCorrelator(settings.correlation_window_seconds)
         self.scorer = SeverityScorer()
         self.advisor = SuggestedActionAdvisor()
         self.protected = ProtectedProcessList()
@@ -113,6 +116,7 @@ class Auditor:
         alerts = self.alert_maker.build(findings, snapshot)
 
         for alert in alerts:
+            self.correlator.correlate(alert)
             self.scorer.score(alert)
             if alert.severity == config.CRITICAL:
                 self.auto_response.respond(alert)
@@ -120,6 +124,9 @@ class Auditor:
                 self.advisor.advise(alert)
             self.severity_counts[alert.severity] += 1
             self.logger.log_alert(alert)
+
+        # Remember this poll's findings so later polls can be correlated with them.
+        self.correlator.observe(findings, snapshot)
 
         self.cycle += 1
         self._write_state(snapshot, "running", time.time() - cycle_started)
@@ -154,6 +161,7 @@ class Auditor:
             "cycle_duration_seconds": round(cycle_seconds, 4),
             "polling_interval_seconds": self.settings.polling_interval_seconds,
             "alert_cooldown_seconds": self.settings.alert_cooldown_seconds,
+            "correlation_window_seconds": self.settings.correlation_window_seconds,
             "auto_response_action": self.settings.auto_response_action,
             "auto_response_scope": self.settings.auto_response_scope,
             "audit_log_file": str(self.settings.audit_log_file),

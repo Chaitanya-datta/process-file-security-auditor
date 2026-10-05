@@ -3,6 +3,7 @@
     Process Watcher  -> ProcessRecord / Snapshot
     Detection        -> Finding
     Alert Maker      -> Alert
+    Event Correlator adds earlier findings of the same process to the Alert.
     Severity Scorer, Advisor, Auto-Response fill in the rest of the Alert.
 """
 
@@ -80,7 +81,10 @@ class Alert:
     findings: List[Dict[str, object]]
     is_test_process: bool = False
     simulated: bool = False
+    # --- filled in by the Event Correlator ---
+    correlated_rules: List[str] = field(default_factory=list)   # rules carried over from earlier polls
     # --- filled in by the Severity Scorer ---
+    correlation: str = ""           # the rule combination that raised the severity, if any
     severity: str = ""
     severity_explanation: str = ""
     # --- filled in by the Suggested Action Advisor or the Auto-Response Module ---

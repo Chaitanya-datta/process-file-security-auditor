@@ -46,6 +46,8 @@ def format_alert(alert: Alert) -> str:
     ]
     lines += [f"  Reason: {reason}" for reason in alert.reasons]
     lines.append(f"  Severity: {alert.severity} - {alert.severity_explanation}")
+    if alert.correlated_rules:
+        lines.append(f"  Correlated: {' + '.join(alert.correlated_rules)} carried over from earlier polls")
     if critical:
         lines.append(f"  Protected: {'YES' if alert.protected else 'NO'} ({alert.protected_reason})")
         lines.append(f"  Action: {alert.action_taken}")

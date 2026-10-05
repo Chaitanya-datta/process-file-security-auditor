@@ -1,6 +1,7 @@
 {
   "polling_interval_seconds": 2,
   "alert_cooldown_seconds": 120,
+  "correlation_window_seconds": 60,
   "process_burst_threshold": 10,
   "process_burst_window_seconds": 10,
   "process_burst_ignored_parents": ["launchd", "kernel_task"],

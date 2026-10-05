@@ -2,11 +2,11 @@
 
 Groups the findings of one polling cycle by process, so a process that
 triggered several rules produces ONE combined alert. Combining matters because
-Critical severity depends on a combination of findings.
+severity can depend on a combination of findings.
 
-It also removes duplicates: the same process showing the same behaviour is
-reported once and then stays quiet for a configurable cooldown, instead of
-flooding the log every polling cycle.
+Repeats are filtered out with the Alert De-duplicator
+(src/alert_deduplicator.py): the same process showing the same behaviour is
+reported once instead of on every polling cycle.
 """
 
 from __future__ import annotations
@@ -15,21 +15,22 @@ import time
 from collections import defaultdict
 from dataclasses import asdict
 from datetime import datetime
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 from . import config
+from .alert_deduplicator import AlertDeduplicator
 from .models import Alert, Finding, Snapshot
-
-DedupKey = Tuple[int, float, Tuple[str, ...]]
 
 
 class AlertMaker:
     def __init__(self, session_id: str, cooldown_seconds: float) -> None:
         self._session_id = session_id
-        self._cooldown = cooldown_seconds
-        self._last_raised: Dict[DedupKey, float] = {}
+        self._deduplicator = AlertDeduplicator(cooldown_seconds)
         self._counter = 0
-        self.suppressed_duplicates = 0
+
+    @property
+    def suppressed_duplicates(self) -> int:
+        return self._deduplicator.suppressed_duplicates
 
     def build(self, findings: List[Finding], snapshot: Snapshot) -> List[Alert]:
         """Return the new (non-duplicate) alerts for this cycle."""
@@ -43,16 +44,8 @@ class AlertMaker:
             record = snapshot.records.get(pid)
             if record is None:
                 continue
-
-            # Same process (PID + creation time) + same rules + same resources
-            # = the same behaviour as before. New behaviour gives a new key.
-            signature = tuple(sorted(f"{f.rule}:{f.resource}" for f in process_findings))
-            key: DedupKey = (pid, round(record.create_time, 2), signature)
-            last = self._last_raised.get(key)
-            if last is not None and now - last < self._cooldown:
-                self.suppressed_duplicates += 1
+            if not self._deduplicator.is_new(pid, record.create_time, process_findings, now):
                 continue
-            self._last_raised[key] = now
 
             self._counter += 1
             rules: List[str] = []
@@ -85,9 +78,5 @@ class AlertMaker:
                 )
             )
 
-        self._forget_dead_processes(snapshot)
+        self._deduplicator.forget_dead_processes(snapshot)
         return alerts
-
-    def _forget_dead_processes(self, snapshot: Snapshot) -> None:
-        for key in [k for k in self._last_raised if k[0] not in snapshot.records]:
-            del self._last_raised[key]

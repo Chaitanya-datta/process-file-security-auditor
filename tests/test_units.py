@@ -13,9 +13,11 @@ import unittest
 
 from src import config
 from src.action_advisor import SuggestedActionAdvisor
+from src.alert_deduplicator import AlertDeduplicator
 from src.alert_maker import AlertMaker
 from src.auto_response import AutoResponseModule
 from src.burst_detector import ProcessBurstDetector
+from src.event_correlation import EventCorrelator
 from src.exec_location_detector import SuspiciousLocationDetector
 from src.models import ProcessRecord, Snapshot
 from src.owner_detector import OwnerChangeDetector
@@ -291,6 +293,137 @@ class PipelineLogicTest(unittest.TestCase):
         critical = self.make_alert(record(8, owner="root", euid=0, files=[WATCHED]), baseline=[record(8)])[0]
         with self.assertRaises(ValueError):
             advisor.advise(critical)
+
+
+class CorrelationTest(unittest.TestCase):
+    """Combination rules (Severity Scorer) and correlation across polls (Event Correlator)."""
+
+    TMP_EXE = config.resolve_path("/tmp") + "/x/tool"
+
+    def pipeline(self):
+        return {"location": SuspiciousLocationDetector(), "parent": UnusualParentDetector(),
+                "files": SensitiveFileDetector(), "owner": OwnerChangeDetector(),
+                "burst": ProcessBurstDetector(3, 10, []), "maker": AlertMaker("unit", 60),
+                "correlator": EventCorrelator(window_seconds=60), "scorer": SeverityScorer()}
+
+    @staticmethod
+    def poll(p, *records):
+        snap = snapshot(*records)
+        findings = (p["owner"].check(snap) + p["files"].check(snap) + p["parent"].check(snap)
+                    + p["location"].check(snap) + p["burst"].check(snap))
+        alerts = p["maker"].build(findings, snap)
+        for alert in alerts:
+            p["correlator"].correlate(alert)
+            p["scorer"].score(alert)
+        p["correlator"].observe(findings, snap)
+        return alerts
+
+    def test_two_medium_rules_in_the_same_poll_are_high_not_critical(self):
+        alerts = self.poll(self.pipeline(), record(1, name="firefox"),
+                           record(2, name="bash", ppid=1, exe=self.TMP_EXE))
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0].severity, config.HIGH)
+        self.assertEqual(set(alerts[0].rules), {config.RULE_UNUSUAL_PARENT, config.RULE_SUSPICIOUS_LOCATION})
+        self.assertTrue(alerts[0].correlation)
+        SuggestedActionAdvisor().advise(alerts[0])           # HIGH is advisory: no automatic action
+        self.assertEqual(alerts[0].action_code, "NONE")
+
+    def test_original_mappings_are_unchanged(self):
+        p = self.pipeline()
+        self.assertEqual(self.poll(p, record(1, name="firefox"), record(2, name="bash", ppid=1))[0].severity,
+                         config.MEDIUM)
+        self.assertEqual(self.poll(self.pipeline(), record(3, files=[WATCHED]))[0].severity, config.HIGH)
+        p = self.pipeline()
+        self.poll(p, record(4))
+        self.assertEqual(self.poll(p, record(4, owner="root", euid=0))[0].severity, config.HIGH)
+        p = self.pipeline()
+        self.poll(p, record(5))
+        critical = self.poll(p, record(5, owner="root", euid=0, files=[WATCHED]))[0]
+        self.assertEqual((critical.severity, critical.correlation),
+                         (config.CRITICAL, "OWNER_CHANGE + SENSITIVE_FILE"))
+
+    def test_medium_rule_with_a_high_rule_stays_high(self):
+        alert = self.poll(self.pipeline(), record(6, files=[WATCHED], exe=self.TMP_EXE))[0]
+        self.assertEqual(alert.severity, config.HIGH)
+
+    def test_findings_from_different_polls_are_correlated(self):
+        p, now = self.pipeline(), time.time()
+        parent = record(30, name="tool", exe=self.TMP_EXE)
+        first = self.poll(p, parent)
+        self.assertEqual([(a.rules, a.severity) for a in first],
+                         [([config.RULE_SUSPICIOUS_LOCATION], config.MEDIUM)])
+        self.assertEqual(self.poll(p, parent), [])            # unchanged: nothing new to report
+        kids = [record(3000 + i, name="sleep", ppid=30, created=now) for i in range(3)]
+        second = self.poll(p, parent, *kids)
+        self.assertEqual(len(second), 1)
+        self.assertEqual(second[0].severity, config.HIGH)
+        self.assertEqual(set(second[0].rules), {config.RULE_SUSPICIOUS_LOCATION, config.RULE_PROCESS_BURST})
+
+    def test_one_shot_finding_is_carried_over_within_the_window_only(self):
+        correlator, scorer = EventCorrelator(window_seconds=60), SeverityScorer()
+        now = time.time()
+        parent = record(31, name="bash")
+        burst_snap = Snapshot(taken_at=now - 20, records={31: parent, **{
+            3100 + i: record(3100 + i, ppid=31, created=now - 21) for i in range(3)}})
+        correlator.observe(ProcessBurstDetector(3, 10, []).check(burst_snap), burst_snap)
+
+        later = Snapshot(taken_at=now, records={31: record(31, name="bash", exe=self.TMP_EXE)})
+        findings = SuspiciousLocationDetector().check(later)
+        alert = AlertMaker("unit", 60).build(findings, later)[0]
+        correlator.correlate(alert)
+        scorer.score(alert)
+        self.assertEqual(alert.correlated_rules, [config.RULE_PROCESS_BURST])
+        self.assertEqual(alert.severity, config.HIGH)
+        self.assertIn("earlier", alert.reasons[-1])
+
+        expired = EventCorrelator(window_seconds=5)
+        expired.observe(ProcessBurstDetector(3, 10, []).check(burst_snap), burst_snap)
+        expired.observe([], later)
+        alert = AlertMaker("unit", 60).build(findings, later)[0]
+        expired.correlate(alert)
+        scorer.score(alert)
+        self.assertEqual((alert.correlated_rules, alert.severity), ([], config.MEDIUM))
+
+    def test_correlation_never_mixes_two_processes_or_a_reused_pid(self):
+        correlator = EventCorrelator(window_seconds=60)
+        old = snapshot(record(32, exe=self.TMP_EXE, created=100.0))
+        correlator.observe(SuspiciousLocationDetector().check(old), old)
+        reused = snapshot(record(1, name="firefox"), record(32, name="bash", ppid=1, created=200.0))
+        correlator.observe([], reused)
+        alert = AlertMaker("unit", 60).build(UnusualParentDetector().check(reused), reused)[0]
+        correlator.correlate(alert)
+        self.assertEqual(alert.rules, [config.RULE_UNUSUAL_PARENT])
+
+
+class DeduplicationTest(unittest.TestCase):
+    def test_repeated_polling_gives_one_alert_not_a_flood(self):
+        maker, files = AlertMaker("unit", cooldown_seconds=60), SensitiveFileDetector()
+        snap = snapshot(record(40, files=[WATCHED]))
+        raised = sum(len(maker.build(files.check(snap), snap)) for _ in range(100))
+        self.assertEqual((raised, maker.suppressed_duplicates), (1, 99))
+
+    def test_cooldown_restarts_while_the_condition_persists(self):
+        dedup, finding = AlertDeduplicator(cooldown_seconds=10), SensitiveFileDetector().check(
+            snapshot(record(41, files=[WATCHED])))
+        seen = [dedup.is_new(41, 100.0, finding, now) for now in (0, 8, 16, 24)]
+        self.assertEqual(seen, [True, False, False, False])       # still present: never repeated
+        self.assertTrue(dedup.is_new(41, 100.0, finding, 40))     # absent for a full cooldown: new again
+
+    def test_different_object_process_or_rule_is_new_behaviour(self):
+        dedup, files = AlertDeduplicator(cooldown_seconds=60), SensitiveFileDetector()
+        first = files.check(snapshot(record(42, files=[WATCHED])))
+        other_file = files.check(snapshot(record(42, files=[WATCHED_LOW])))
+        self.assertTrue(dedup.is_new(42, 100.0, first, 0))
+        self.assertTrue(dedup.is_new(42, 100.0, other_file, 1))       # different file
+        self.assertTrue(dedup.is_new(42, 200.0, first, 2))            # PID reused by a new process
+        self.assertTrue(dedup.is_new(43, 100.0, first, 3))            # different process
+        self.assertFalse(dedup.is_new(42, 100.0, first + other_file, 4))  # both already reported
+
+    def test_entries_of_exited_processes_are_forgotten(self):
+        dedup, finding = AlertDeduplicator(60), SensitiveFileDetector().check(snapshot(record(44, files=[WATCHED])))
+        dedup.is_new(44, 100.0, finding, 0)
+        dedup.forget_dead_processes(snapshot(record(45)))
+        self.assertTrue(dedup.is_new(44, 100.0, finding, 1))
 
 
 class ProtectionTest(unittest.TestCase):

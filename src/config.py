@@ -91,7 +91,8 @@ def _read_json(path: Path) -> Optional[dict]:
 @dataclass
 class Settings:
     polling_interval_seconds: float = 2.0
-    alert_cooldown_seconds: float = 120.0
+    alert_cooldown_seconds: float = 120.0      # an identical alert stays quiet this long
+    correlation_window_seconds: float = 60.0   # earlier findings of a process are combined this long
     # Process Creation Burst: this many children within this many seconds.
     process_burst_threshold: int = 10
     process_burst_window_seconds: float = 10.0
@@ -132,6 +133,7 @@ def load_settings() -> Settings:
 
     settings.polling_interval_seconds = number("polling_interval_seconds", 2.0, 0.5)
     settings.alert_cooldown_seconds = number("alert_cooldown_seconds", 120.0, 0.0)
+    settings.correlation_window_seconds = number("correlation_window_seconds", 60.0, 0.0)
 
     settings.process_burst_threshold = int(number("process_burst_threshold", 10, 2))
     settings.process_burst_window_seconds = number("process_burst_window_seconds", 10.0, 1.0)
