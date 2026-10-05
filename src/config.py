@@ -29,6 +29,7 @@ SETTINGS_FILE = CONFIG_DIR / "settings.json"
 SENSITIVE_FILES_FILE = CONFIG_DIR / "sensitive_files.txt"
 PARENT_RULES_FILE = CONFIG_DIR / "parent_rules.json"
 PROTECTED_PROCESSES_FILE = CONFIG_DIR / "protected_processes.json"
+SUSPICIOUS_LOCATIONS_FILE = CONFIG_DIR / "suspicious_locations.txt"
 
 # --------------------------------------------------------------------------
 # Controlled testing constants (see src/test_hooks.py and docs/testing.md)
@@ -47,6 +48,7 @@ TEST_INJECTION_FILE = SANDBOX_DIR / "test_injection.json"
 RULE_OWNER_CHANGE = "OWNER_CHANGE"
 RULE_SENSITIVE_FILE = "SENSITIVE_FILE"
 RULE_UNUSUAL_PARENT = "UNUSUAL_PARENT"
+RULE_SUSPICIOUS_LOCATION = "SUSPICIOUS_EXEC_LOCATION"
 
 LOW, MEDIUM, HIGH, CRITICAL = "LOW", "MEDIUM", "HIGH", "CRITICAL"
 SEVERITY_ORDER = [LOW, MEDIUM, HIGH, CRITICAL]
@@ -210,6 +212,44 @@ def load_sensitive_files() -> List[WatchEntry]:
             )
         )
     return entries
+
+
+# --------------------------------------------------------------------------
+# Suspicious execution locations
+# --------------------------------------------------------------------------
+@dataclass
+class SuspiciousLocation:
+    """One directory from config/suspicious_locations.txt."""
+
+    original: str          # the text as written in the file
+    resolved: str          # absolute directory path with symlinks resolved
+
+    def contains(self, executable: str) -> bool:
+        # The trailing '/' stops /tmp from also matching /tmpfiles/app.
+        return executable.startswith(self.resolved.rstrip("/") + "/")
+
+
+def load_suspicious_locations() -> List[SuspiciousLocation]:
+    locations: List[SuspiciousLocation] = []
+    try:
+        lines = SUSPICIOUS_LOCATIONS_FILE.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        _warn("suspicious_locations.txt not found - no execution locations are checked.")
+        return locations
+    except OSError as exc:
+        _warn(f"suspicious_locations.txt could not be read ({exc}) - no execution locations are checked.")
+        return locations
+
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        resolved = resolve_path(line)
+        if resolved == "/":
+            _warn("suspicious_locations.txt: '/' would match every process - entry ignored.")
+            continue
+        locations.append(SuspiciousLocation(original=line, resolved=resolved))
+    return locations
 
 
 # --------------------------------------------------------------------------

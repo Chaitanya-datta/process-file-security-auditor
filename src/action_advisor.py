@@ -25,6 +25,9 @@ RULE_SUGGESTIONS = {
         "Check why this process has the watched file open and whether it should have access.",
     config.RULE_UNUSUAL_PARENT:
         "Check the parent process and the command line of the child it started.",
+    config.RULE_SUSPICIOUS_LOCATION:
+        "Check what this program is and why it runs from that folder; move trusted "
+        "software to a normal install location.",
 }
 
 

@@ -2,8 +2,8 @@
 
 Polls the operating system's process table through psutil and returns a
 Snapshot: one ProcessRecord per running process, holding the PID, name, owner,
-permission level (effective UID), parent PID, command line, open files, CPU
-and memory use.
+permission level (effective UID), parent PID, command line, executable path,
+open files, CPU and memory use.
 
 The watcher only READS information. It never changes a process.
 """
@@ -92,6 +92,7 @@ class ProcessWatcher:
             ppid = _read(proc.ppid, None)
             create_time = _read(proc.create_time, 0.0)
             cmdline_parts = _read(proc.cmdline, []) or []
+            exe = _read(proc.exe, "") or ""
             cpu_percent = _read(lambda: proc.cpu_percent(interval=None), 0.0)
             memory = _read(proc.memory_info, None)
 
@@ -110,6 +111,7 @@ class ProcessWatcher:
             effective_uid=uids.effective if uids else None,
             ppid=ppid,
             cmdline=" ".join(cmdline_parts)[:MAX_CMDLINE_CHARS],
+            exe=exe,
             open_files=open_files,
             open_files_readable=open_files_readable,
             cpu_percent=round(cpu_percent or 0.0, 1),

@@ -1,0 +1,26 @@
+# Suspicious execution locations (Suspicious Execution Location Detection)
+# ---------------------------------------------------------------------
+# One DIRECTORY per line. Lines starting with '#' are comments.
+#   ~          expands to the home directory
+#   relative   paths are resolved from the project root
+#
+# A process is flagged (MEDIUM) when its executable file is inside one of
+# these directories or any of their sub-directories. Programs are normally
+# installed in /Applications, /usr, /bin, /System, /opt and similar places;
+# running straight from a temporary or download folder is unusual.
+#
+# This is a location heuristic, not malware detection. The auditor never
+# opens or scans these directories; it only compares each process's
+# executable path with this list.
+
+# --- Temporary and shared-writable folders ---
+/tmp
+/var/tmp
+/Users/Shared
+
+# --- Folders where downloaded or discarded files land ---
+~/Downloads
+~/.Trash
+
+# --- Safe demo / test location (created by the test harness) ---
+tests/sandbox/unusual_location

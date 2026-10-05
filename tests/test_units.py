@@ -15,6 +15,7 @@ from src import config
 from src.action_advisor import SuggestedActionAdvisor
 from src.alert_maker import AlertMaker
 from src.auto_response import AutoResponseModule
+from src.exec_location_detector import SuspiciousLocationDetector
 from src.models import ProcessRecord, Snapshot
 from src.owner_detector import OwnerChangeDetector
 from src.parent_detector import UnusualParentDetector
@@ -27,9 +28,11 @@ WATCHED = config.resolve_path("tests/sandbox/sensitive/fake_ssh_private_key.txt"
 WATCHED_LOW = config.resolve_path("tests/sandbox/sensitive/fake_notes.txt")
 
 
-def record(pid, name="proc", owner="alice", euid=501, ppid=1, files=(), created=100.0, test=False):
+def record(pid, name="proc", owner="alice", euid=501, ppid=1, files=(), created=100.0, test=False,
+           exe="/usr/bin/proc"):
     return ProcessRecord(pid=pid, name=name, owner=owner, real_uid=501, effective_uid=euid,
-                         ppid=ppid, open_files=list(files), create_time=created, is_test_process=test)
+                         ppid=ppid, open_files=list(files), create_time=created, is_test_process=test,
+                         exe=exe)
 
 
 def snapshot(*records):
@@ -94,13 +97,40 @@ class UnusualParentTest(unittest.TestCase):
         self.assertEqual(findings[0].details["parent_pid"], 70)
 
 
+class SuspiciousLocationTest(unittest.TestCase):
+    TMP = config.resolve_path("/tmp")           # /private/tmp on macOS
+
+    def test_program_in_listed_location_is_flagged(self):
+        findings = SuspiciousLocationDetector().check(snapshot(
+            record(80, name="tool", exe=self.TMP + "/build/tool"),
+            record(81, name="ls", exe="/bin/ls"),
+            record(82, name="app", exe="/Applications/App.app/Contents/MacOS/app")))
+        self.assertEqual([f.pid for f in findings], [80])
+        self.assertEqual(findings[0].rule, config.RULE_SUSPICIOUS_LOCATION)
+        self.assertEqual(findings[0].details["executable"], self.TMP + "/build/tool")
+        self.assertEqual(findings[0].details["matched_location"], "/tmp")
+
+    def test_unreadable_executable_path_is_skipped(self):
+        self.assertEqual(SuspiciousLocationDetector().check(snapshot(record(83, exe=""))), [])
+
+    def test_similar_folder_name_does_not_match(self):
+        # /tmp must not match a different folder whose name merely starts with "tmp".
+        self.assertEqual(SuspiciousLocationDetector().check(
+            snapshot(record(84, exe=self.TMP + "files/app"))), [])
+
+    def test_watcher_reads_its_own_executable_path(self):
+        me = ProcessWatcher().snapshot().records[os.getpid()]
+        self.assertTrue(os.path.isabs(me.exe))
+
+
 class PipelineLogicTest(unittest.TestCase):
     def make_alert(self, *records, baseline=None):
         owner, files, parent = OwnerChangeDetector(), SensitiveFileDetector(), UnusualParentDetector()
+        location = SuspiciousLocationDetector()
         if baseline:
             owner.check(snapshot(*baseline))
         snap = snapshot(*records)
-        findings = owner.check(snap) + files.check(snap) + parent.check(snap)
+        findings = owner.check(snap) + files.check(snap) + parent.check(snap) + location.check(snap)
         alerts = AlertMaker("unit", cooldown_seconds=60).build(findings, snap)
         for alert in alerts:
             SeverityScorer().score(alert)
@@ -109,6 +139,21 @@ class PipelineLogicTest(unittest.TestCase):
     def test_unusual_parent_alone_is_medium(self):
         alerts = self.make_alert(record(1, name="firefox"), record(2, name="bash", ppid=1))
         self.assertEqual([a.severity for a in alerts], [config.MEDIUM])
+
+    def test_suspicious_location_alone_is_medium_with_suggestion_only(self):
+        alert = self.make_alert(record(9, exe=config.resolve_path("/tmp") + "/x/tool"))[0]
+        self.assertEqual(alert.rules, [config.RULE_SUSPICIOUS_LOCATION])
+        self.assertEqual(alert.severity, config.MEDIUM)
+        SuggestedActionAdvisor().advise(alert)
+        self.assertEqual((alert.response_type, alert.action_code), ("SUGGESTED_ACTION", "NONE"))
+        self.assertIn("folder", alert.suggested_action)
+
+    def test_suspicious_location_does_not_weaken_existing_levels(self):
+        tmp_exe = config.resolve_path("/tmp") + "/x/tool"
+        self.assertEqual(self.make_alert(record(10, files=[WATCHED], exe=tmp_exe))[0].severity, config.HIGH)
+        critical = self.make_alert(record(11, owner="root", euid=0, files=[WATCHED], exe=tmp_exe),
+                                   baseline=[record(11, exe=tmp_exe)])
+        self.assertEqual([a.severity for a in critical], [config.CRITICAL])
 
     def test_sensitive_file_alone_is_high_and_low_tag_is_low(self):
         self.assertEqual(self.make_alert(record(3, files=[WATCHED]))[0].severity, config.HIGH)

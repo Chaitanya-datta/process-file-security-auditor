@@ -39,6 +39,8 @@ FIXTURE_SCRIPT = Path(__file__).resolve().parent / "fixture_process.py"
 SENSITIVE_DIR = config.SANDBOX_DIR / "sensitive"
 NORMAL_DIR = config.SANDBOX_DIR / "normal"
 BIN_DIR = config.SANDBOX_DIR / "bin"
+# Listed in config/suspicious_locations.txt for scenario G.
+UNUSUAL_LOCATION_DIR = config.SANDBOX_DIR / "unusual_location"
 
 SENSITIVE_TEST_FILE = SENSITIVE_DIR / "fake_ssh_private_key.txt"
 NORMAL_TEST_FILE = NORMAL_DIR / "normal_notes.txt"
@@ -85,6 +87,7 @@ class Fixture:
         self.pid: int = popen.pid
         self.child_pid: Optional[int] = ready.get("child_pid")
         self.spawn_time: Optional[float] = ready.get("spawn_time")
+        self.ready_time: float = float(ready.get("time", time.time()))
         self.create_time: float = psutil.Process(self.pid).create_time()
 
     def open_file(self, path: Path) -> float:
@@ -179,7 +182,7 @@ class Harness:
         self._stop_auditor()
 
     def _prepare_sandbox(self) -> None:
-        for directory in (SENSITIVE_DIR, NORMAL_DIR, BIN_DIR):
+        for directory in (SENSITIVE_DIR, NORMAL_DIR, BIN_DIR, UNUSUAL_LOCATION_DIR):
             directory.mkdir(parents=True, exist_ok=True)
         dummy = {
             SENSITIVE_TEST_FILE: "DUMMY TEST FILE - this is NOT a real private key.\n",
@@ -282,18 +285,18 @@ class Harness:
 
     # --------------------------------------------------------------- fixtures
     def start_fixture(self, process_name: Optional[str] = None, open_path: Optional[Path] = None,
-                      spawn_shell: bool = False) -> Fixture:
+                      spawn_shell: bool = False, directory: Optional[Path] = None) -> Fixture:
         """Start a controlled test process.
 
         *process_name* gives the process a specific name in the OS process
         table. macOS takes that name from the executable file, so the harness
         runs the fixture with a private COPY of the Python interpreter that
-        has that file name (kept in tests/sandbox/bin/).
+        has that file name (kept in tests/sandbox/bin/, or in *directory*).
         """
         environment = dict(os.environ)
         interpreter = sys.executable
         if process_name:
-            interpreter = str(self._named_interpreter(process_name))
+            interpreter = str(self._named_interpreter(process_name, directory or BIN_DIR))
             environment["PYTHONHOME"] = sys.base_prefix   # lets the copy find the standard library
             environment.pop("__PYVENV_LAUNCHER__", None)
 
@@ -323,9 +326,9 @@ class Harness:
         return fixture
 
     @staticmethod
-    def _named_interpreter(process_name: str) -> Path:
+    def _named_interpreter(process_name: str, directory: Path) -> Path:
         source = Path(os.path.realpath(sys.executable))
-        target = BIN_DIR / process_name
+        target = directory / process_name
         if not target.exists() or target.stat().st_size != source.stat().st_size:
             shutil.copyfile(source, target)
             target.chmod(0o755)

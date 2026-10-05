@@ -2,7 +2,7 @@
 
 Connects the modules into the pipeline from the project design:
 
-    Process Watcher -> 3 detection modules -> Alert Maker -> Severity Scorer
+    Process Watcher -> detection modules -> Alert Maker -> Severity Scorer
         -> LOW / MEDIUM / HIGH : Suggested Action Advisor
         -> CRITICAL            : Protected Process Check -> Auto-Response Module
         -> Logging + Screen Display
@@ -32,6 +32,7 @@ from .action_advisor import SuggestedActionAdvisor
 from .alert_maker import AlertMaker
 from .audit_logger import AuditLogger, read_state
 from .auto_response import AutoResponseModule
+from .exec_location_detector import SuspiciousLocationDetector
 from .models import Alert, Snapshot
 from .owner_detector import OwnerChangeDetector
 from .parent_detector import UnusualParentDetector
@@ -73,6 +74,7 @@ class Auditor:
         self.owner_detector = OwnerChangeDetector()
         self.file_detector = SensitiveFileDetector()
         self.parent_detector = UnusualParentDetector()
+        self.location_detector = SuspiciousLocationDetector()
         self.alert_maker = AlertMaker(self.session_id, settings.alert_cooldown_seconds)
         self.scorer = SeverityScorer()
         self.advisor = SuggestedActionAdvisor()
@@ -92,6 +94,7 @@ class Auditor:
             self.owner_detector.check(snapshot)
             + self.file_detector.check(snapshot)
             + self.parent_detector.check(snapshot)
+            + self.location_detector.check(snapshot)
         )
         alerts = self.alert_maker.build(findings, snapshot)
 
@@ -143,6 +146,7 @@ class Auditor:
             "protected_entries": self.protected.size,
             "watchlist_entries": self.file_detector.watchlist_size,
             "parent_rules": self.parent_detector.rule_count,
+            "suspicious_locations": self.location_detector.location_count,
             "processes_monitored": len(processes),
             "open_files_unreadable": snapshot.open_files_denied if snapshot else 0,
             "baseline_size": self.owner_detector.baseline_size,
@@ -161,7 +165,8 @@ class Auditor:
             f"polling every {self.settings.polling_interval_seconds:g}s, "
             f"auto-response: {self.settings.auto_response_action} / scope {self.settings.auto_response_scope}, "
             f"{self.protected.size} protected entries, {self.file_detector.watchlist_size} watched paths, "
-            f"{self.parent_detector.rule_count} parent rules)"
+            f"{self.parent_detector.rule_count} parent rules, "
+            f"{self.location_detector.location_count} suspicious locations)"
         )
         if self.test_mode:
             self.logger.log_event(

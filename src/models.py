@@ -24,6 +24,7 @@ class ProcessRecord:
     ppid: Optional[int]
     parent_name: str = "unknown"
     cmdline: str = ""
+    exe: str = ""                       # executable path ("" if unreadable)
     open_files: List[str] = field(default_factory=list)
     open_files_readable: bool = True    # False if macOS denied access
     cpu_percent: float = 0.0
