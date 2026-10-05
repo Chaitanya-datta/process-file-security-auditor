@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Overview{% endblock %} · Process &amp; File Security Auditor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-refresh-seconds="{{ refresh_seconds }}">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <h1>PROCESS &amp; FILE SECURITY AUDITOR</h1>
+        <p class="subtitle">Operating Systems Security / Process Management &middot; BCSE303P</p>
+      </div>
+    </div>
+    <div class="status-box">
+      <span id="test-mode" class="tag hidden" title="Controlled test injection is enabled">TEST MODE</span>
+      <span id="status" class="status stopped"><span class="dot"></span><span id="status-text">AUDITOR STOPPED</span></span>
+      <span id="status-detail" class="status-detail">connecting&hellip;</span>
+    </div>
+  </header>
+
+  <nav class="nav" aria-label="Sections">
+    {% for label, endpoint in nav %}
+    <a href="{{ url_for(endpoint) }}" class="{{ 'active' if request.endpoint == endpoint else '' }}">{{ label }}</a>
+    {% endfor %}
+  </nav>
+
+  <main>
+    <div id="error" class="error hidden"></div>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer>
+    Read-only view of the auditor's own log and status files &middot; refreshes every {{ refresh_seconds }} s &middot;
+    last update <span id="updated">never</span>
+  </footer>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

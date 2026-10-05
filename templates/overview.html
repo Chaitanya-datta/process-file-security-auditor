@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Security Overview{% endblock %}
+{% block content %}
+<section class="cards">
+  <div class="card"><span class="card-label">Processes Monitored</span><span class="card-value" id="c-processes">0</span><span class="card-note" id="c-processes-note">&nbsp;</span></div>
+  <div class="card"><span class="card-label">Total Alerts</span><span class="card-value" id="c-total">0</span><span class="card-note" id="c-total-note">this session</span></div>
+  <div class="card sev-high"><span class="card-label">High Alerts</span><span class="card-value" id="c-high">0</span><span class="card-note">suggested action</span></div>
+  <div class="card sev-critical"><span class="card-label">Critical Alerts</span><span class="card-value" id="c-critical">0</span><span class="card-note">controlled response</span></div>
+</section>
+
+<section class="two-column">
+  <div class="panel">
+    <h2>System Status</h2>
+    <dl class="info">
+      <dt>Auditor</dt><dd id="i-auditor">-</dd>
+      <dt>Logging</dt><dd id="i-logging">-</dd>
+      <dt>Auto-response</dt><dd id="i-response">-</dd>
+      <dt>Polling interval</dt><dd id="i-interval">-</dd>
+      <dt>Protected processes</dt><dd id="i-protected">-</dd>
+      <dt>Watched paths</dt><dd id="i-watched">-</dd>
+    </dl>
+  </div>
+  <div class="panel">
+    <h2>Alerts by Severity <span class="hint">current session</span></h2>
+    <div class="bars">
+      <div class="bar-row"><span class="bar-name">Low</span><div class="bar-track"><div class="bar sev-low" id="b-low"></div></div><span class="bar-count" id="n-low">0</span></div>
+      <div class="bar-row"><span class="bar-name">Medium</span><div class="bar-track"><div class="bar sev-medium" id="b-medium"></div></div><span class="bar-count" id="n-medium">0</span></div>
+      <div class="bar-row"><span class="bar-name">High</span><div class="bar-track"><div class="bar sev-high" id="b-high"></div></div><span class="bar-count" id="n-high">0</span></div>
+      <div class="bar-row"><span class="bar-name">Critical</span><div class="bar-track"><div class="bar sev-critical" id="b-critical"></div></div><span class="bar-count" id="n-critical">0</span></div>
+    </div>
+    <p class="panel-note" id="suppressed-note"></p>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Recent Alerts <span class="hint">newest first</span></h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Time</th><th>PID</th><th>Process</th><th>Reason</th><th>Severity</th><th>Action</th></tr></thead>
+      <tbody id="alerts-body"><tr><td colspan="6" class="empty">No alerts.</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Process Table <span class="hint" id="process-hint"></span>
+    <input id="filter" type="search" placeholder="Filter by name, owner or PID" aria-label="Filter processes">
+  </h2>
+  <div class="table-wrap tall">
+    <table>
+      <thead><tr><th>PID</th><th>Process name</th><th>Owner</th><th>Parent PID</th><th class="num">CPU %</th><th class="num">Memory (MB)</th></tr></thead>
+      <tbody id="process-body"><tr><td colspan="6" class="empty">Auditor is not running.</td></tr></tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='overview.js') }}"></script>{% endblock %}

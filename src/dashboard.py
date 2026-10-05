@@ -33,6 +33,16 @@ app = Flask(
     static_folder=str(config.PROJECT_ROOT / "static"),
 )
 
+# Navigation shown on every page: (label, Flask endpoint name).
+NAV = [
+    ("Overview", "index"),
+]
+
+
+@app.context_processor
+def _template_globals() -> dict:
+    return {"nav": NAV, "refresh_seconds": REFRESH_SECONDS}
+
 
 def _describe_action(alert: dict) -> str:
     kind = alert.get("response_type")
@@ -77,8 +87,10 @@ def build_status() -> dict:
     processes = sorted(processes, key=lambda p: (-p.get("cpu_percent", 0), -p.get("memory_mb", 0)))
 
     scope = state.get("auto_response_scope", settings.auto_response_scope)
+    action = state.get("auto_response_action", settings.auto_response_action)
     scope_text = ("controlled test processes only" if scope == "test_only"
                   else "any process that is not protected")
+    interval = state.get("polling_interval_seconds", settings.polling_interval_seconds)
     return {
         "status": "RUNNING" if running else "STOPPED",
         "test_mode": bool(state.get("test_mode")) if running else False,
@@ -92,15 +104,19 @@ def build_status() -> dict:
         "total_alerts": len(alerts),
         "suppressed_duplicates": state.get("suppressed_duplicates", 0),
         "system": {
-            "polling_interval": f"{state.get('polling_interval_seconds', settings.polling_interval_seconds):g} s",
-            "logging": ("ACTIVE" if running else "IDLE") + f" - {settings.audit_log_file.name}, "
-                       f"{settings.alerts_file.name} in {settings.log_dir}",
-            "protected": f"ENABLED - {state.get('protected_entries', 0)} protected entries; "
-                         f"auto-response ({state.get('auto_response_action', settings.auto_response_action)}) "
-                         f"limited to {scope_text}" if state else "Auditor has not been started yet",
-            "watchlist": f"{state.get('watchlist_entries', 0)} watched paths, "
-                         f"{state.get('parent_rules', 0)} parent rules" if state else "-",
-            "open_files_unreadable": state.get("open_files_unreadable", 0) if running else 0,
+            "auditor": ("ACTIVE" + (" (test mode)" if state.get("test_mode") else "")
+                        + f" - PID {state.get('auditor_pid')}, {state.get('cycle', 0)} polls completed")
+                       if running else "STOPPED",
+            "logging": ("ACTIVE" if running else "IDLE")
+                       + f" - {settings.audit_log_file.name} and {settings.alerts_file.name} in {settings.log_dir}",
+            "auto_response": f"Critical alerts only - {action} - {scope_text}",
+            "polling_interval": f"{interval:g} s",
+            "protected_processes": f"{state['protected_entries']} entries on the protected list"
+                                   if "protected_entries" in state else "auditor has not been started yet",
+            "watched_paths": f"{state['watchlist_entries']} sensitive paths"
+                             + (f", {state['suspicious_locations']} suspicious locations"
+                                if "suspicious_locations" in state else "")
+                             if "watchlist_entries" in state else "auditor has not been started yet",
         },
         "processes": processes,
         "alerts": recent,
@@ -109,7 +125,7 @@ def build_status() -> dict:
 
 @app.route("/")
 def index():
-    return render_template("dashboard.html", refresh_seconds=REFRESH_SECONDS)
+    return render_template("overview.html")
 
 
 @app.route("/api/status")
