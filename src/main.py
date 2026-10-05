@@ -147,6 +147,8 @@ class Auditor:
                     "cpu_percent": r.cpu_percent, "memory_mb": r.memory_mb,
                     "memory_percent": r.memory_percent,
                     "status": r.status, "is_test_process": r.is_test_process,
+                    "create_time": r.create_time,
+                    "protected": self.protected.check(r.pid, r.name).protected,
                 }
                 for r in snapshot.records.values()
             ]

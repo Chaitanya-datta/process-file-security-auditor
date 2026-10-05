@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Processes{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2>Process Monitoring <span class="hint" id="process-hint"></span>
+    <input id="search" type="search" placeholder="Search process name or PID" aria-label="Search process name or PID">
+  </h2>
+  <div class="chips" id="state-chips" role="group" aria-label="Filter by security state">
+    <button type="button" class="chip active" data-state="ALL">All <span class="chip-count" id="n-all">0</span></button>
+    <button type="button" class="chip" data-state="NORMAL">Normal <span class="chip-count" id="n-normal">0</span></button>
+    <button type="button" class="chip" data-state="SUSPICIOUS">Suspicious <span class="chip-count" id="n-suspicious">0</span></button>
+    <button type="button" class="chip" data-state="PROTECTED">Protected <span class="chip-count" id="n-protected">0</span></button>
+  </div>
+  <div class="table-wrap page-tall">
+    <table>
+      <thead><tr>
+        <th>PID</th><th>Process</th><th>User</th><th>PPID</th>
+        <th class="num">CPU %</th><th class="num">Memory</th><th>Status</th><th>Security state</th>
+      </tr></thead>
+      <tbody id="process-body"><tr><td colspan="8" class="empty">Auditor is not running.</td></tr></tbody>
+    </table>
+  </div>
+  <p class="panel-note">
+    <strong>Suspicious</strong>: the process has at least one alert in this session.
+    <strong>Protected</strong>: on the protected process list, so automatic response can never act on it.
+    <strong>Normal</strong>: neither. CPU % is per core (100 = one full core). Sorted by CPU.
+  </p>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='processes.js') }}"></script>{% endblock %}

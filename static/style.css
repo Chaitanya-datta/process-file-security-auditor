@@ -262,3 +262,14 @@ input[type="search"]:focus { outline: none; border-color: var(--accent); }
   .alerts-layout { grid-template-columns: 1fr; }
   .rule-checklist { grid-template-columns: 1fr; }
 }
+
+/* ---------- process monitoring ---------- */
+.table-wrap.page-tall { max-height: 640px; }
+.chip-count { margin-left: 4px; font-family: var(--mono); opacity: 0.8; }
+.state { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; margin-right: 8px; }
+.state-normal { color: var(--muted); }
+.state-protected { color: var(--accent); }
+.state-suspicious { color: var(--high); }
+.state-link { margin-left: 8px; font-size: 12px; }
+.row-suspicious { background: rgba(255, 143, 74, 0.06); }
+.row-suspicious td:first-child { box-shadow: inset 3px 0 0 var(--high); }

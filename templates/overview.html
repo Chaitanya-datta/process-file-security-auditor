@@ -39,13 +39,12 @@
 </section>
 
 <section class="panel">
-  <h2>Process Table <span class="hint" id="process-hint"></span>
-    <input id="filter" type="search" placeholder="Filter by name, owner or PID" aria-label="Filter processes">
-  </h2>
-  <div class="table-wrap tall">
+  <h2>Busiest Processes <span class="hint">top by CPU right now</span>
+    <a class="panel-link" href="{{ url_for('processes_page') }}">All processes, search and filters &rarr;</a></h2>
+  <div class="table-wrap">
     <table>
-      <thead><tr><th>PID</th><th>Process name</th><th>Owner</th><th>Parent PID</th><th class="num">CPU %</th><th class="num">Memory (MB)</th></tr></thead>
-      <tbody id="process-body"><tr><td colspan="6" class="empty">Auditor is not running.</td></tr></tbody>
+      <thead><tr><th>PID</th><th>Process</th><th>User</th><th>PPID</th><th class="num">CPU %</th><th class="num">Memory</th><th>Security state</th></tr></thead>
+      <tbody id="process-body"><tr><td colspan="7" class="empty">Auditor is not running.</td></tr></tbody>
     </table>
   </div>
 </section>

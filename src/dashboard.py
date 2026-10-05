@@ -27,6 +27,7 @@ from .main import is_auditor_running
 RECENT_ALERT_LIMIT = 50       # rows in the overview table
 TIMELINE_LIMIT = 200          # alerts sent to the timeline page
 OVERVIEW_TIMELINE_LIMIT = 6
+OVERVIEW_PROCESS_LIMIT = 8
 REFRESH_SECONDS = 2
 
 app = Flask(
@@ -39,6 +40,7 @@ app = Flask(
 NAV = [
     ("Overview", "index"),
     ("Alerts", "alerts_page"),
+    ("Processes", "processes_page"),
 ]
 
 
@@ -116,6 +118,50 @@ def _alert_details(alert: dict) -> dict:
     return item
 
 
+_RANK = {level: index for index, level in enumerate(config.SEVERITY_ORDER)}
+
+
+def _process_rows(state: dict, alerts: List[dict]) -> List[dict]:
+    """The live process table with a security state for every process.
+
+    SUSPICIOUS  the process has at least one alert in this session
+    PROTECTED   the process is on the protected process list
+    NORMAL      neither
+    A process is matched to its alerts by PID and creation time, so a new
+    process that reuses an old PID does not inherit the old alerts.
+    """
+    by_process: dict = {}
+    for alert in alerts:
+        key = (alert.get("pid"), round(float(alert.get("create_time", 0)), 2))
+        entry = by_process.setdefault(key, {"count": 0, "highest": config.LOW})
+        entry["count"] += 1
+        if _RANK.get(alert.get("severity"), 0) > _RANK[entry["highest"]]:
+            entry["highest"] = alert["severity"]
+
+    rows = []
+    for process in state.get("processes", []):
+        key = (process.get("pid"), round(float(process.get("create_time", 0)), 2))
+        flagged = by_process.get(key)
+        protected = bool(process.get("protected"))
+        rows.append({
+            "pid": process.get("pid"),
+            "name": process.get("name"),
+            "user": process.get("owner"),
+            "ppid": process.get("ppid"),
+            "cpu_percent": process.get("cpu_percent", 0),
+            "memory_mb": process.get("memory_mb", 0),
+            "memory_percent": process.get("memory_percent", 0),
+            "status": process.get("status") or "-",
+            "protected": protected,
+            "is_test_process": bool(process.get("is_test_process")),
+            "alert_count": flagged["count"] if flagged else 0,
+            "highest_severity": flagged["highest"] if flagged else None,
+            "security_state": "SUSPICIOUS" if flagged else ("PROTECTED" if protected else "NORMAL"),
+        })
+    rows.sort(key=lambda r: (-r["cpu_percent"], -r["memory_mb"]))
+    return rows
+
+
 def _describe_action(alert: dict) -> str:
     kind = alert.get("response_type")
     if kind == "SUGGESTED_ACTION":
@@ -155,8 +201,7 @@ def build_status() -> dict:
         for a in reversed(alerts[-RECENT_ALERT_LIMIT:])
     ]
 
-    processes = state.get("processes", []) if running else []
-    processes = sorted(processes, key=lambda p: (-p.get("cpu_percent", 0), -p.get("memory_mb", 0)))
+    processes = _process_rows(state, alerts) if running else []
 
     scope = state.get("auto_response_scope", settings.auto_response_scope)
     action = state.get("auto_response_action", settings.auto_response_action)
@@ -191,6 +236,8 @@ def build_status() -> dict:
                              if "watchlist_entries" in state else "auditor has not been started yet",
         },
         "timeline": [_timeline_item(a) for a in reversed(alerts[-OVERVIEW_TIMELINE_LIMIT:])],
+        "suspicious_processes": sum(1 for p in processes if p["security_state"] == "SUSPICIOUS"),
+        "top_processes": processes[:OVERVIEW_PROCESS_LIMIT],
         "processes": processes,
         "alerts": recent,
     }
@@ -206,13 +253,31 @@ def alerts_page():
     return render_template("alerts.html")
 
 
+def _header_only(status: dict) -> dict:
+    """The parts of the status every page needs for its header."""
+    return {key: value for key, value in status.items()
+            if key not in ("processes", "top_processes", "alerts", "timeline")}
+
+
+@app.route("/processes")
+def processes_page():
+    return render_template("processes.html")
+
+
+@app.route("/api/processes")
+def api_processes():
+    try:
+        status = build_status()
+        return jsonify({"header": _header_only(status), "processes": status["processes"]})
+    except Exception as exc:
+        return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
+
+
 @app.route("/api/alerts")
 def api_alerts():
     try:
-        header = build_status()
+        header = _header_only(build_status())
         session = _session_alerts(config.load_settings(), header["session_id"])
-        for key in ("processes", "alerts", "timeline"):
-            header.pop(key, None)
         return jsonify({
             "header": header,
             "total": len(session),
@@ -225,7 +290,9 @@ def api_alerts():
 @app.route("/api/status")
 def api_status():
     try:
-        return jsonify(build_status())
+        status = build_status()
+        status.pop("processes")          # the full table is served by /api/processes
+        return jsonify(status)
     except Exception as exc:  # the page shows the error instead of going blank
         return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
 

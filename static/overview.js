@@ -14,37 +14,17 @@ function renderTimeline(items) {
   }
 }
 
-let lastProcesses = [];
-
-function renderProcesses() {
+function renderProcesses(processes) {
   const body = byId("process-body");
-  const query = byId("filter").value.trim().toLowerCase();
-  const rows = lastProcesses.filter((p) =>
-    !query || `${p.pid} ${p.name} ${p.owner}`.toLowerCase().includes(query));
   body.replaceChildren();
-  if (!lastProcesses.length) {
-    body.appendChild(emptyRow("Auditor is not running.", 6));
-  } else if (!rows.length) {
-    body.appendChild(emptyRow("No process matches the filter.", 6));
-  }
-  for (const p of rows) {
-    const tr = el("tr");
-    tr.appendChild(cell(p.pid, "mono"));
-    tr.appendChild(cell(p.name));
-    tr.appendChild(cell(p.owner));
-    tr.appendChild(cell(p.ppid, "mono"));
-    tr.appendChild(cell(Number(p.cpu_percent).toFixed(1), "num"));
-    tr.appendChild(cell(Number(p.memory_mb).toFixed(1), "num"));
-    body.appendChild(tr);
-  }
-  byId("process-hint").textContent = lastProcesses.length
-    ? `${rows.length} of ${lastProcesses.length} shown, sorted by CPU` : "";
+  if (!processes.length) body.appendChild(emptyRow("Auditor is not running.", 7));
+  for (const p of processes) body.appendChild(processRow(p, false));
 }
 
 function render(data) {
   byId("c-processes").textContent = data.processes_monitored;
   byId("c-processes-note").textContent = data.status === "RUNNING"
-    ? `poll ${data.cycle} · every ${data.system.polling_interval}` : "auditor not running";
+    ? `${data.suspicious_processes} with alerts · poll ${data.cycle}` : "auditor not running";
   byId("c-total").textContent = data.total_alerts;
   byId("c-high").textContent = data.counts.HIGH;
   byId("c-critical").textContent = data.counts.CRITICAL;
@@ -66,9 +46,7 @@ function render(data) {
   byId("i-watched").textContent = data.system.watched_paths;
 
   renderTimeline(data.timeline);
-  lastProcesses = data.processes;
-  renderProcesses();
+  renderProcesses(data.top_processes);
 }
 
-byId("filter").addEventListener("input", renderProcesses);
 startRefresh("/api/status", render);

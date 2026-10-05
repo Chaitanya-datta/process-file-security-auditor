@@ -43,6 +43,40 @@ function timelineEntry(item) {
   return entry;
 }
 
+// "SUSPICIOUS (HIGH, 2 alerts)", "PROTECTED" or "NORMAL" for the process tables.
+function securityStateCell(p) {
+  const td = el("td");
+  const state = el("span", "state state-" + p.security_state.toLowerCase(), p.security_state);
+  td.appendChild(state);
+  if (p.security_state === "SUSPICIOUS") {
+    td.appendChild(severityBadge(p.highest_severity));
+    const link = el("a", "state-link", `${p.alert_count} alert${p.alert_count === 1 ? "" : "s"}`);
+    link.href = "/alerts";
+    td.appendChild(link);
+    if (p.protected) td.appendChild(el("span", "hint", "protected"));
+  }
+  return td;
+}
+
+// One row of a process table; withStatus adds the OS process status column.
+function processRow(p, withStatus) {
+  const tr = el("tr", p.security_state === "SUSPICIOUS" ? "row-suspicious" : "");
+  tr.appendChild(cell(p.pid, "mono"));
+  const name = cell(p.name);
+  if (p.is_test_process) name.appendChild(el("span", "tag small", "test process"));
+  tr.appendChild(name);
+  tr.appendChild(cell(p.user));
+  tr.appendChild(cell(p.ppid, "mono"));
+  tr.appendChild(cell(Number(p.cpu_percent).toFixed(1), "num"));
+  // macOS does not let an ordinary user read the memory of other users' processes.
+  const memory = Number(p.memory_mb) > 0
+    ? `${Number(p.memory_mb).toFixed(1)} MB (${Number(p.memory_percent || 0).toFixed(1)}%)` : "n/a";
+  tr.appendChild(cell(memory, "num nowrap"));
+  if (withStatus) tr.appendChild(cell(p.status, "mono"));
+  tr.appendChild(securityStateCell(p));
+  return tr;
+}
+
 function showError(message) {
   const box = byId("error");
   box.textContent = message;
