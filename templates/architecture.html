@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Architecture{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2>Architecture <span class="hint">one polling cycle, top to bottom</span></h2>
+  <div class="flow">
+    <div class="flow-node source"><strong>Running Processes</strong><span>operating system process table</span></div>
+    <div class="flow-arrow"></div>
+    <div class="flow-node"><strong>Process Watcher</strong><span>polls every few seconds with psutil: PID, PPID, owner, executable, open files, CPU, memory</span><code>src/process_watcher.py</code></div>
+    <div class="flow-arrow"></div>
+
+    <div class="flow-group">
+      <div class="flow-group-title">Detection Layer <span>six independent rule-based checks on the same snapshot</span></div>
+      <div class="flow-grid">
+        <div class="flow-node small"><strong>Owner Change</strong><span>owner differs from the recorded baseline</span><code>owner_detector.py</code></div>
+        <div class="flow-node small"><strong>Sensitive File</strong><span>open file is on the watchlist</span><code>sensitive_file_detector.py</code></div>
+        <div class="flow-node small"><strong>Unusual Parent</strong><span>parent-child pair matches a rule</span><code>parent_detector.py</code></div>
+        <div class="flow-node small"><strong>Suspicious Execution</strong><span>executable is in a listed folder</span><code>exec_location_detector.py</code></div>
+        <div class="flow-node small"><strong>Process Burst</strong><span>many children in a short window</span><code>burst_detector.py</code></div>
+        <div class="flow-node small"><strong>Resource Anomaly</strong><span>CPU / memory above threshold for N polls</span><code>resource_detector.py</code></div>
+      </div>
+    </div>
+    <div class="flow-arrow"></div>
+
+    <div class="flow-node"><strong>Alert Maker</strong><span>one alert per process; repeats removed by the cooldown</span><code>src/alert_maker.py · src/alert_deduplicator.py</code></div>
+    <div class="flow-arrow"></div>
+    <div class="flow-node"><strong>Event Correlation</strong><span>adds the same process's findings from earlier polls</span><code>src/event_correlation.py</code></div>
+    <div class="flow-arrow"></div>
+    <div class="flow-node"><strong>Severity Scorer</strong><span>fixed table: LOW / MEDIUM / HIGH / CRITICAL</span><code>src/severity_scorer.py</code></div>
+    <div class="flow-arrow split"></div>
+
+    <div class="flow-branches">
+      <div class="flow-branch">
+        <div class="flow-branch-label"><span class="badge sev-low">LOW</span><span class="badge sev-medium">MEDIUM</span><span class="badge sev-high">HIGH</span></div>
+        <div class="flow-node"><strong>Suggested Action Advisor</strong><span>recommends a next step; the process is never changed</span><code>src/action_advisor.py</code></div>
+      </div>
+      <div class="flow-branch">
+        <div class="flow-branch-label"><span class="badge sev-critical">CRITICAL</span></div>
+        <div class="flow-node"><strong>Protected Process Check</strong><span>protected: no action, reason logged</span><code>src/protected_processes.py</code></div>
+        <div class="flow-arrow short"></div>
+        <div class="flow-node"><strong>Auto-Response</strong><span>suspend / terminate, then verify with the OS</span><code>src/auto_response.py</code></div>
+      </div>
+    </div>
+    <div class="flow-arrow"></div>
+
+    <div class="flow-node"><strong>Logging</strong><span>audit.log, alerts.jsonl and the terminal</span><code>src/audit_logger.py</code></div>
+    <div class="flow-arrow"></div>
+    <div class="flow-node sink"><strong>Dashboard</strong><span>this page: reads the log and status files only</span><code>src/dashboard.py</code></div>
+  </div>
+  <p class="panel-note">
+    The <strong>Test Script</strong> (<span class="mono">tests/</span>) sits outside this pipeline: it starts controlled test
+    processes whose activity the pipeline above detects. The whole loop is wired together in
+    <span class="mono">src/main.py</span> (<span class="mono">Auditor.run_cycle</span>).
+  </p>
+</section>
+{% endblock %}
+{% block scripts %}<script>startRefresh("/api/status", () => {});</script>{% endblock %}

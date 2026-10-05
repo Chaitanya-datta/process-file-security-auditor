@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Detection Rules{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2>Detection Rules <span class="hint">six rule-based checks, with the values currently configured</span></h2>
+  <div class="rule-grid">
+    {% for rule in rules %}
+    <article class="rule-card">
+      <header>
+        <span class="rule-number mono">{{ loop.index }}</span>
+        <h3>{{ rule.name }}</h3>
+        <span class="badge sev-{{ rule.level|lower }}">{{ rule.level }}</span>
+      </header>
+      <p class="rule-checks">{{ rule.checks }}</p>
+      <p>{{ rule.how }}</p>
+      {% if rule.level_note %}<p class="hint">{{ rule.level_note }}</p>{% endif %}
+      <p class="rule-config mono">{{ rule.config_file }}</p>
+      {% if rule.config_values %}
+      <ul class="rule-values mono">
+        {% for value in rule.config_values %}<li>{{ value }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="two-column even">
+  <div class="panel">
+    <h2>Severity Rules</h2>
+    <table class="plain">
+      <thead><tr><th>Triggered rule(s) on one process</th><th>Severity</th></tr></thead>
+      <tbody>
+        <tr><td>Sensitive file tagged <span class="mono">low</span></td><td><span class="badge sev-low">LOW</span></td></tr>
+        <tr><td>Unusual parent alone</td><td><span class="badge sev-medium">MEDIUM</span></td></tr>
+        <tr><td>Suspicious execution location alone</td><td><span class="badge sev-medium">MEDIUM</span></td></tr>
+        <tr><td>Process creation burst alone</td><td><span class="badge sev-medium">MEDIUM</span></td></tr>
+        <tr><td>Resource usage anomaly alone</td><td><span class="badge sev-medium">MEDIUM</span></td></tr>
+        <tr><td>Sensitive file alone</td><td><span class="badge sev-high">HIGH</span></td></tr>
+        <tr><td>Owner change alone</td><td><span class="badge sev-high">HIGH</span></td></tr>
+        <tr><td>Two or more different MEDIUM rules together</td><td><span class="badge sev-high">HIGH</span></td></tr>
+        <tr><td>Owner change + sensitive file access</td><td><span class="badge sev-critical">CRITICAL</span></td></tr>
+      </tbody>
+    </table>
+    <p class="panel-note">Otherwise an alert takes the highest level among its rules. The table is fixed: the same
+      findings always give the same severity.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Correlation, Cooldown and Response</h2>
+    <dl class="info stacked">
+      <dt>Event correlation</dt>
+      <dd>Findings for the same process are combined into one alert: those from the same poll, and those from
+        earlier polls within <strong>{{ '%g'|format(settings.correlation_window_seconds) }} s</strong>.</dd>
+      <dt>Alert de-duplication</dt>
+      <dd>The same process + same rule + same object is reported once. It can be reported again only after it
+        has been absent for <strong>{{ '%g'|format(settings.alert_cooldown_seconds) }} s</strong>.</dd>
+      <dt>Low / Medium / High</dt>
+      <dd>Suggested Action Advisor shows a recommended next step. The process is never changed.</dd>
+      <dt>Critical</dt>
+      <dd>Protected Process Check first ({{ protected_count }} protected entries). If not protected, the Auto-Response
+        Module performs <strong>{{ settings.auto_response_action }}</strong>, limited to
+        <strong>{{ scope_text }}</strong>, and verifies the result with the OS.</dd>
+      <dt>Polling</dt>
+      <dd>Every <strong>{{ '%g'|format(settings.polling_interval_seconds) }} s</strong>. Activity shorter than one
+        interval can be missed.</dd>
+    </dl>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script>startRefresh("/api/status", () => {});</script>{% endblock %}

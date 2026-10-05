@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Test Lab{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2>Test Lab <span class="hint">validation scenarios for the detection and response pipeline</span></h2>
+  <p class="lead">
+    Each scenario starts a harmless controlled test process, makes it perform one activity, and checks
+    what the running auditor did about it. These are validation tests, not product features.
+    The buttons can only start the fixed scenarios below.
+  </p>
+  <p class="lab-banner" id="lab-banner"></p>
+  <div class="table-wrap page-tall">
+    <table class="lab-table">
+      <thead><tr><th></th><th>Scenario</th><th>Expected</th><th>Latest result</th><th>Detection</th><th></th></tr></thead>
+      <tbody id="lab-body"><tr><td colspan="6" class="empty">Loading&hellip;</td></tr></tbody>
+    </table>
+  </div>
+  <p class="panel-note" id="lab-full-run"></p>
+  <p class="panel-note">
+    Scenarios C, E and F use a <strong>simulated owner change</strong> (an ordinary macOS process cannot change
+    its owner); everything else, including the suspension in E, is real. To run everything from a terminal:
+    <span class="mono">python3 -m tests.test_runner</span>
+  </p>
+</section>
+
+<section class="panel hidden" id="lab-details">
+  <h2>Checks performed <span class="hint" id="lab-details-title"></span></h2>
+  <ul class="check-list" id="lab-checks"></ul>
+  <p class="panel-note" id="lab-notes"></p>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='test_lab.js') }}"></script>{% endblock %}

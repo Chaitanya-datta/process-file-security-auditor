@@ -3,12 +3,15 @@
     python3 -m src.dashboard            then open http://127.0.0.1:5050
 
 The dashboard contains NO detection or response logic and has NO buttons that
-control processes. It only reads the files the auditor writes:
+control processes. It reads the files the auditor writes:
 
     logs/auditor_state.json   heartbeat, settings and the current process table
     logs/alerts.jsonl         every alert that was logged
 
-and shows them. If the auditor is not running, the page says STOPPED.
+and shows them. If the auditor is not running, the header says STOPPED.
+
+The one action it offers is in the Test Lab: starting one of the project's
+own fixed test scenarios (see src/test_lab.py). No other command can be run.
 """
 
 from __future__ import annotations
@@ -18,9 +21,9 @@ import sys
 import time
 from typing import List, Optional
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 
-from . import config
+from . import config, test_lab
 from .audit_logger import read_alerts, read_state
 from .main import is_auditor_running
 
@@ -42,6 +45,9 @@ NAV = [
     ("Alerts", "alerts_page"),
     ("Processes", "processes_page"),
     ("Statistics", "statistics_page"),
+    ("Test Lab", "test_lab_page"),
+    ("Detection Rules", "rules_page"),
+    ("Architecture", "architecture_page"),
 ]
 
 
@@ -282,6 +288,147 @@ def _statistics(alerts: List[dict]) -> dict:
         "by_detection": [{"label": label, "count": by_detection[rule]}
                          for rule, label in config.RULE_LABELS.items()],
     }
+
+
+# --------------------------------------------------------------------------
+# Test Lab
+# --------------------------------------------------------------------------
+LAB_REQUEST_HEADER = "X-Requested-With"
+LAB_REQUEST_VALUE = "psa-dashboard"
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
+@app.route("/test-lab")
+def test_lab_page():
+    return render_template("test_lab.html")
+
+
+def _lab_status() -> dict:
+    status = build_status()
+    lab = test_lab.overview()
+    ready = status["status"] == "RUNNING" and status["test_mode"]
+    lab["can_run"] = ready
+    lab["cannot_run_reason"] = "" if ready else (
+        "Start the auditor with:  python3 -m src.main --test-mode"
+        if status["status"] != "RUNNING" else
+        "The auditor is running without --test-mode. Restart it with:  python3 -m src.main --test-mode")
+    return {"header": _header_only(status), "lab": lab}
+
+
+@app.route("/api/test-lab")
+def api_test_lab():
+    try:
+        return jsonify(_lab_status())
+    except Exception as exc:
+        return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
+
+
+@app.route("/api/test-lab/run/<letter>", methods=["POST"])
+def api_test_lab_run(letter: str):
+    """Start one built-in scenario. Only requests made by this dashboard's own page are accepted."""
+    host = (request.host or "").rsplit(":", 1)[0].strip("[]")
+    if request.remote_addr not in LOCAL_HOSTS or host not in LOCAL_HOSTS:
+        return jsonify({"error": "The Test Lab only accepts requests from this computer"}), 403
+    if request.headers.get(LAB_REQUEST_HEADER) != LAB_REQUEST_VALUE:
+        return jsonify({"error": "Request did not come from the dashboard page"}), 403
+    letter = letter.upper()
+    if letter not in test_lab.SCENARIOS:
+        return jsonify({"error": "Unknown scenario"}), 404
+    lab = _lab_status()["lab"]
+    if not lab["can_run"]:
+        return jsonify({"error": lab["cannot_run_reason"]}), 409
+    try:
+        test_lab.start(letter)
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 409
+    return jsonify({"started": letter}), 202
+
+
+# --------------------------------------------------------------------------
+# Detection Rules and Architecture (static explanations with live configuration)
+# --------------------------------------------------------------------------
+def _rules_context() -> dict:
+    settings = config.load_settings()
+    watchlist = config.load_sensitive_files()
+    parent_rules = config.load_parent_rules()
+    locations = config.load_suspicious_locations()
+    protected = config.load_protected_processes()
+    rules = [
+        {
+            "name": config.RULE_LABELS[config.RULE_SENSITIVE_FILE], "level": "HIGH",
+            "level_note": "LOW for entries tagged 'low'",
+            "checks": "Checks each process's open files against the sensitive-file watchlist.",
+            "how": "The Process Watcher lists the files every process has open. Any path that matches "
+                   "a watchlist entry raises a finding. The auditor compares paths only; it never opens the files.",
+            "config_file": "config/sensitive_files.txt",
+            "config_values": [f"{len(watchlist)} watched paths"] + [f"{e.original}  ({e.sensitivity})" for e in watchlist],
+        },
+        {
+            "name": config.RULE_LABELS[config.RULE_OWNER_CHANGE], "level": "HIGH", "level_note": "",
+            "checks": "Compares the current owner of each process with the recorded baseline.",
+            "how": "The first time a PID is seen its owner (user and effective UID) is stored. On every "
+                   "later poll the current owner is compared with that baseline. The PID's creation time is "
+                   "stored too, so a reused PID gets a fresh baseline.",
+            "config_file": "no configuration - the baseline is learned automatically",
+            "config_values": [],
+        },
+        {
+            "name": config.RULE_LABELS[config.RULE_UNUSUAL_PARENT], "level": "MEDIUM", "level_note": "",
+            "checks": "Checks whether a process has an unexpected parent relationship.",
+            "how": "Each process's PPID gives its parent. The (parent name, child name) pair is compared "
+                   "with the configured rules, for example a web browser starting a command shell.",
+            "config_file": "config/parent_rules.json",
+            "config_values": [f"{len(parent_rules)} rules"] + [
+                f"{r.name}: {len(r.parents)} parent patterns -> {len(r.children)} child patterns"
+                for r in parent_rules],
+        },
+        {
+            "name": config.RULE_LABELS[config.RULE_SUSPICIOUS_LOCATION], "level": "MEDIUM", "level_note": "",
+            "checks": "Checks executable paths against configured suspicious locations.",
+            "how": "The path of each process's executable file is compared with the listed folders "
+                   "(temporary and download folders). A program running from inside one raises a finding. "
+                   "It is a location heuristic, not malware detection.",
+            "config_file": "config/suspicious_locations.txt",
+            "config_values": [f"{len(locations)} locations"] + [l.original for l in locations],
+        },
+        {
+            "name": config.RULE_LABELS[config.RULE_PROCESS_BURST], "level": "MEDIUM", "level_note": "",
+            "checks": "Checks for unusually rapid child-process creation by one parent.",
+            "how": "Using PPID and creation time, recently created children are counted per parent. "
+                   "Reaching the threshold inside the time window raises one finding on the parent.",
+            "config_file": "config/settings.json",
+            "config_values": [f"threshold: {settings.process_burst_threshold} children",
+                       f"time window: {settings.process_burst_window_seconds:g} s",
+                       "ignored parents: " + ", ".join(settings.process_burst_ignored_parents)],
+        },
+        {
+            "name": config.RULE_LABELS[config.RULE_RESOURCE_ANOMALY], "level": "MEDIUM", "level_note": "",
+            "checks": "Checks CPU and memory use against configured thresholds.",
+            "how": "A process must stay above a threshold for several polls in a row before a finding "
+                   "is raised, so one short spike is ignored. CPU % is per core (100 = one full core).",
+            "config_file": "config/settings.json",
+            "config_values": [f"CPU threshold: {settings.resource_cpu_threshold_percent:g} %",
+                       f"memory threshold: {settings.resource_memory_threshold_percent:g} % of RAM",
+                       f"must persist for: {settings.resource_sustained_cycles} consecutive polls"],
+        },
+    ]
+    return {
+        "rules": rules,
+        "settings": settings,
+        "protected_count": len(protected.names) + len(protected.test_policy_names) + len(protected.pids),
+        "scope_text": ("controlled test processes only" if settings.auto_response_scope == "test_only"
+                       else "any process that is not protected"),
+    }
+
+
+@app.route("/rules")
+def rules_page():
+    return render_template("rules.html", **_rules_context())
+
+
+@app.route("/architecture")
+def architecture_page():
+    return render_template("architecture.html")
 
 
 @app.route("/statistics")

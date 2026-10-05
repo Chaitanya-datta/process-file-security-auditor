@@ -530,6 +530,7 @@ def run_scenarios(scenarios: List[Callable[[Harness], ScenarioResult]], save: bo
     parser.add_argument("--hold", type=float, default=0.0,
                         help="keep each scenario's test process alive this many seconds after "
                              "the check (useful to look at the dashboard during a demo)")
+    parser.add_argument("--json", help="also write the results to this JSON file")
     args = parser.parse_args(argv)
 
     results: List[ScenarioResult] = []
@@ -561,6 +562,9 @@ def run_scenarios(scenarios: List[Callable[[Harness], ScenarioResult]], save: bo
     except KeyboardInterrupt:
         print("\nInterrupted - test processes were cleaned up.")
         return 130
+
+    if args.json:
+        Path(args.json).write_text(json.dumps([asdict(r) for r in results], indent=2), encoding="utf-8")
 
     passed = sum(r.passed for r in results)
     print(f"\n{passed} / {len(results)} scenario(s) passed.")
