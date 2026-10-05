@@ -1,0 +1,4 @@
+# Core library: reads the OS process table and controls processes.
+psutil>=5.9,<8
+# Lightweight local dashboard (presentation layer only).
+Flask>=3.0,<4

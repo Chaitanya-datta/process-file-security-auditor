@@ -1,0 +1,17 @@
+{
+  "_comment": "Protected Process List (Module 9). The Auto-Response Module is NEVER allowed to suspend or terminate a process whose name or PID is listed here, even at Critical severity. Names are matched case-insensitively. The auditor itself and its parent processes are always protected automatically.",
+  "protected_names": [
+    "kernel_task", "launchd", "WindowServer", "loginwindow", "logd", "syslogd",
+    "securityd", "trustd", "tccd", "opendirectoryd", "configd", "notifyd",
+    "distnoted", "cfprefsd", "coreservicesd", "launchservicesd", "runningboardd",
+    "diskarbitrationd", "fseventsd", "powerd", "coreaudiod", "bluetoothd",
+    "airportd", "mDNSResponder", "mds", "mds_stores", "UserEventAgent",
+    "Finder", "Dock", "SystemUIServer", "ControlCenter", "sshd",
+    "Terminal", "iTerm2",
+    "systemd", "init", "System", "csrss.exe", "wininit.exe", "lsass.exe"
+  ],
+  "protected_pids": [0, 1],
+  "test_policy_protected_names": [
+    "psa_protected_fixture"
+  ]
+}

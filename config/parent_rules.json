@@ -1,0 +1,27 @@
+{
+  "_comment": "Unusual parent-child rules (Module 4). A process is flagged when its PARENT name matches one of 'parents' and its own name matches one of 'children'. Matching is case-insensitive and supports * wildcards.",
+  "rules": [
+    {
+      "name": "browser-spawns-shell",
+      "description": "A web browser started a command shell",
+      "parents": [
+        "safari*", "google chrome*", "chromium*", "firefox*", "brave browser*",
+        "microsoft edge*", "opera*", "arc*", "com.apple.webkit*",
+        "psa_fake_browser"
+      ],
+      "children": ["sh", "bash", "zsh", "dash", "fish", "ksh", "tcsh", "csh"]
+    },
+    {
+      "name": "document-app-spawns-shell-or-interpreter",
+      "description": "A document / mail application started a shell or script interpreter",
+      "parents": [
+        "microsoft word*", "microsoft excel*", "microsoft powerpoint*",
+        "preview", "textedit", "mail", "pages", "numbers", "keynote"
+      ],
+      "children": [
+        "sh", "bash", "zsh", "dash", "fish", "ksh", "tcsh", "csh",
+        "osascript", "python*", "perl*", "ruby*", "curl", "nc"
+      ]
+    }
+  ]
+}

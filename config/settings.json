@@ -1,0 +1,9 @@
+{
+  "polling_interval_seconds": 2,
+  "alert_cooldown_seconds": 120,
+  "auto_response_action": "suspend",
+  "auto_response_scope": "test_only",
+  "log_dir": "logs",
+  "dashboard_host": "127.0.0.1",
+  "dashboard_port": 5050
+}

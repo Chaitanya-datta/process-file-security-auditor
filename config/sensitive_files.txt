@@ -1,0 +1,23 @@
+# Sensitive-file watchlist (Module 3: Sensitive File Detection)
+# ------------------------------------------------------------
+# One path per line. Lines starting with '#' are comments.
+#   ~            expands to the home directory
+#   relative     paths are resolved from the project root
+#   trailing '/' watches every file inside that directory
+#   "| low"      optional sensitivity tag (default is "high")
+#
+# The auditor NEVER opens, reads or modifies these files. It only compares
+# the *paths* of files that processes already have open with this list.
+
+# --- Real sensitive locations (path comparison only) ---
+~/.ssh/id_rsa
+~/.ssh/id_ed25519
+~/.ssh/id_ecdsa
+~/.aws/credentials
+/etc/master.passwd
+/etc/sudoers
+
+# --- Safe demo / test files (dummy content, created by the test harness) ---
+tests/sandbox/sensitive/fake_ssh_private_key.txt
+tests/sandbox/sensitive/fake_passwords.txt
+tests/sandbox/sensitive/fake_notes.txt | low
