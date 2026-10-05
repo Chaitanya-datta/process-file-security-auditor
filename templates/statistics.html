@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Statistics{% endblock %}
+{% block content %}
+<section class="cards three">
+  <div class="card"><span class="card-label">Alerts This Session</span><span class="card-value" id="s-total">0</span><span class="card-note">counted from logs/alerts.jsonl</span></div>
+  <div class="card"><span class="card-label">Combined Alerts</span><span class="card-value" id="s-combined">0</span><span class="card-note">more than one rule on the same process</span></div>
+  <div class="card"><span class="card-label">Repeats Suppressed</span><span class="card-value" id="s-suppressed">0</span><span class="card-note">by the alert cooldown</span></div>
+</section>
+
+<section class="two-column even">
+  <div class="panel">
+    <h2>Alerts by Severity</h2>
+    <div class="bars" id="by-severity"></div>
+  </div>
+  <div class="panel">
+    <h2>Alerts by Detection</h2>
+    <div class="bars wide-labels" id="by-detection"></div>
+    <p class="panel-note">An alert that combines two rules is counted under both, so these can add up to more than the number of alerts.</p>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='statistics.js') }}"></script>{% endblock %}

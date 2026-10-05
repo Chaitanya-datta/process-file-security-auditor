@@ -273,3 +273,11 @@ input[type="search"]:focus { outline: none; border-color: var(--accent); }
 .state-link { margin-left: 8px; font-size: 12px; }
 .row-suspicious { background: rgba(255, 143, 74, 0.06); }
 .row-suspicious td:first-child { box-shadow: inset 3px 0 0 var(--high); }
+
+/* ---------- statistics ---------- */
+.cards.three { grid-template-columns: repeat(3, 1fr); }
+.two-column.even { grid-template-columns: 1fr 1fr; }
+.bars.wide-labels .bar-row { grid-template-columns: 220px 1fr 44px; }
+@media (max-width: 1000px) {
+  .cards.three, .two-column.even { grid-template-columns: 1fr; }
+}

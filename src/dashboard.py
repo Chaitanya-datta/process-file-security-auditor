@@ -41,6 +41,7 @@ NAV = [
     ("Overview", "index"),
     ("Alerts", "alerts_page"),
     ("Processes", "processes_page"),
+    ("Statistics", "statistics_page"),
 ]
 
 
@@ -257,6 +258,45 @@ def _header_only(status: dict) -> dict:
     """The parts of the status every page needs for its header."""
     return {key: value for key, value in status.items()
             if key not in ("processes", "top_processes", "alerts", "timeline")}
+
+
+def _statistics(alerts: List[dict]) -> dict:
+    """Counts for the Statistics page, computed from the logged alerts."""
+    by_severity = {level: 0 for level in config.SEVERITY_ORDER}
+    by_detection = {rule: 0 for rule in config.RULE_LABELS}
+    combined = 0
+    for alert in alerts:
+        if alert.get("severity") in by_severity:
+            by_severity[alert["severity"]] += 1
+        rules = alert.get("rules", [])
+        for rule in rules:
+            if rule in by_detection:
+                by_detection[rule] += 1        # an alert with two rules counts under both
+        if len(rules) > 1:
+            combined += 1
+    return {
+        "total_alerts": len(alerts),
+        "combined_alerts": combined,
+        "by_severity": [{"label": level.title(), "key": level.lower(), "count": by_severity[level]}
+                        for level in config.SEVERITY_ORDER],
+        "by_detection": [{"label": label, "count": by_detection[rule]}
+                         for rule, label in config.RULE_LABELS.items()],
+    }
+
+
+@app.route("/statistics")
+def statistics_page():
+    return render_template("statistics.html")
+
+
+@app.route("/api/statistics")
+def api_statistics():
+    try:
+        header = _header_only(build_status())
+        session = _session_alerts(config.load_settings(), header["session_id"])
+        return jsonify({"header": header, "statistics": _statistics(session)})
+    except Exception as exc:
+        return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
 
 
 @app.route("/processes")

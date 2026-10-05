@@ -77,6 +77,25 @@ function processRow(p, withStatus) {
   return tr;
 }
 
+// Horizontal bar chart drawn with plain <div>s. items: [{label, count, key?}]
+// Bars are scaled to the largest count in the group; "key" picks a severity colour.
+function renderBars(containerId, items) {
+  const box = byId(containerId);
+  const largest = Math.max(1, ...items.map((item) => item.count));
+  box.replaceChildren();
+  for (const item of items) {
+    const row = el("div", "bar-row");
+    row.appendChild(el("span", "bar-name", item.label));
+    const track = el("div", "bar-track");
+    const bar = el("div", "bar" + (item.key ? " sev-" + item.key : ""));
+    bar.style.width = (item.count / largest) * 100 + "%";
+    track.appendChild(bar);
+    row.appendChild(track);
+    row.appendChild(el("span", "bar-count", item.count));
+    box.appendChild(row);
+  }
+}
+
 function showError(message) {
   const box = byId("error");
   box.textContent = message;
