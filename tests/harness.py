@@ -1,4 +1,4 @@
-"""Shared test harness for scenarios A-F.
+"""Shared test harness for the test scenarios (A-J).
 
 The harness plays the role of the "Test Script" module in the design. It:
 

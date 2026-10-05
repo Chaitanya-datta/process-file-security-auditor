@@ -1,7 +1,8 @@
 # Process & File-Access Security Auditor
 
 A small watchdog that monitors the processes running on a computer, detects
-suspicious behaviour, rates how serious it is, and responds appropriately.
+suspicious behaviour with six rule-based checks, rates how serious it is, and
+responds appropriately.
 
 | | |
 |---|---|
@@ -10,6 +11,10 @@ suspicious behaviour, rates how serious it is, and responds appropriately.
 | **Team** | Unta Chaitanya Datta (24BCE0327), M. Sana Fathima (24BCI0021) |
 | **Faculty** | Suchithra J |
 | **Platform** | macOS, Python 3, psutil (Flask for the dashboard) |
+
+It is a rule-based, polling, user-space tool for an OS lab. It is **not**
+malware detection, not an EDR product, not kernel-level monitoring and it
+uses no machine learning.
 
 ---
 
@@ -22,34 +27,41 @@ source .venv/bin/activate
 python3 -m pip install --upgrade pip
 python3 -m pip install -r requirements.txt
 
-python3 -m tests.test_runner        # runs all six scenarios, prints the results table
+python3 -m tests.test_runner        # runs scenarios A-J and prints the results table
 ```
+
+| What | Command |
+|---|---|
+| Auditor | `python3 -m src.main` |
+| Auditor for the demo and tests | `python3 -m src.main --test-mode` |
+| Dashboard | `python3 -m src.dashboard`, then open <http://127.0.0.1:5050> |
+| All scenarios (A-J) | `python3 -m tests.test_runner` |
+| One scenario | `python3 -m tests.scenario_b` (a ... j) |
+| Unit and dashboard checks | `python3 -m unittest tests.test_units tests.test_dashboard` |
 
 ## Demo (5-10 minutes)
 
-Open three terminals in the project folder and run `source .venv/bin/activate` in each.
+Open two terminals in the project folder and run `source .venv/bin/activate` in each.
 
-| Step | Where | Command | What to point out |
+| Step | Where | Do | Point out |
 |---|---|---|---|
 | 1 | Terminal 1 | `python3 -m src.main --test-mode` | Live status line: processes monitored, polling every 2 s |
 | 2 | Terminal 2 | `python3 -m src.dashboard` | - |
-| 3 | Browser | open <http://127.0.0.1:5050> | RUNNING, real process table, 0 alerts |
-| 4 | Terminal 3 | `python3 -m tests.scenario_a` | Normal file: **no alert** anywhere |
-| 5 | Terminal 3 | `python3 -m tests.scenario_b` | Sensitive file: **HIGH** + suggested action; process untouched |
-| 6 | Terminal 3 | `python3 -m tests.scenario_d` | Fake browser starts a shell: **MEDIUM** + suggestion |
-| 7 | Terminal 3 | `python3 -m tests.scenario_e --hold 15` | **CRITICAL**: protected check = NO, process **suspended** (verified) |
-| 8 | Terminal 3 | `python3 -m tests.scenario_f` | **CRITICAL** on a protected process: **no action**, reason logged |
-| 9 | Terminal 3 | `python3 -m tests.test_runner` | Full A-F results table, saved to `results/` |
-| 10 | Terminal 1 | `Ctrl+C` | Clean shutdown; dashboard switches to STOPPED |
+| 3 | Browser | open <http://127.0.0.1:5050> | AUDITOR ACTIVE, real process count, 0 alerts |
+| 4 | Browser | **Architecture** page | The pipeline, one box per module |
+| 5 | Browser | **Detection Rules** page | Six checks, live thresholds, the severity table |
+| 6 | Browser | **Test Lab** → Run **A** | Normal activity: no alert anywhere |
+| 7 | Browser | Test Lab → Run **B**, then **D** | HIGH (sensitive file) and MEDIUM (unusual parent); suggestions only |
+| 8 | Browser | **Alerts** page, click an alert | "Why this alert was generated": ticked rules, severity, reason |
+| 9 | Browser | Test Lab → Run **E**, then **F** | E: CRITICAL, not protected, process suspended. F: CRITICAL, protected, no action |
+| 10 | Browser | Test Lab → Run **G**, **H**, **J** | New detections, and two findings combining into HIGH |
+| 11 | Browser | **Statistics** and **Processes** pages | Counts by severity / detection; search and the Protected filter |
+| 12 | Terminal 1 | show `logs/audit.log`, then `Ctrl+C` | The same alerts in the log; clean shutdown; dashboard shows STOPPED |
 
-After each scenario the alert appears in Terminal 1, in `logs/audit.log`, and
-on the dashboard (cards, severity bars and the Recent Alerts table update
-within about 2 seconds). Scenario C (`python3 -m tests.scenario_c`) shows the
-owner-change rule on its own.
-
-During step 7, `--hold 15` keeps the suspended test process for 15 seconds, so
-you can show its state in another terminal with `ps -o pid,stat,command -p <PID>`
-(`T` = stopped).
+Scenario I (sustained CPU) takes about 15 seconds because the rule needs five
+consecutive polls. Every scenario can also be run from a terminal, for example
+`python3 -m tests.scenario_e --hold 15` keeps the suspended test process for
+15 seconds so `ps -o pid,stat,command -p <PID>` shows state `T` (stopped).
 
 ---
 
@@ -63,22 +75,22 @@ whether its parent is unusual, rate a finding, or respond to it.
 
 This project provides that missing workflow:
 
-> process monitoring -> suspicious-activity detection -> alert generation ->
-> severity classification -> suggested response -> controlled automatic
-> response -> logging
+> process monitoring → suspicious-activity detection → alert generation →
+> event correlation → severity classification → suggested response →
+> controlled automatic response → logging
 
 ## 2. Objectives
 
-1. Monitor every running process: PID, owner, permission level, parent, open files.
-2. Detect a change of owner or permission level while a process is running.
-3. Detect access to files on a configurable sensitive-file watchlist.
-4. Detect unusual parent-child process relationships.
-5. Give every alert one severity: Low, Medium, High or Critical.
-6. Suggest a next step for Low, Medium and High alerts; the user decides.
-7. Automatically suspend or terminate the process for Critical alerts.
-8. Never act on a process in the protected process list.
-9. Log every alert with time, PID, reason, severity and action taken.
-10. Validate the system with six controlled test scenarios.
+1. Monitor every running process: PID, owner, permission level, parent, executable, open files, CPU, memory.
+2. Detect suspicious behaviour with six explainable rules (section 5).
+3. Combine findings about the same process into one alert and avoid repeated alerts.
+4. Give every alert one severity: Low, Medium, High or Critical.
+5. Suggest a next step for Low, Medium and High alerts; the user decides.
+6. Automatically suspend or terminate the process for Critical alerts only.
+7. Never act on a process in the protected process list.
+8. Log every alert with time, PID, reason, severity and action taken.
+9. Show everything on a local dashboard.
+10. Validate the system with controlled test scenarios.
 
 ## 3. Operating-system concepts used
 
@@ -87,211 +99,191 @@ This project provides that missing workflow:
 | **Process** | The unit the auditor watches. Every program runs as one or more processes. |
 | **Process table** | The OS's list of all processes. `psutil.process_iter()` reads it each cycle. |
 | **PID** | Unique number of a running process; the key for baselines and alerts. PIDs are reused after a process exits, so the creation time is stored with it. |
-| **PPID / parent-child** | Every process is created by a parent (`fork`/`exec`). The PPID links child to parent; the unusual-parent check uses it. |
+| **PPID / parent-child** | Every process is created by a parent (`fork`/`exec`). The PPID links child to parent; the unusual-parent and process-burst checks use it. |
 | **Process ownership** | Each process runs as a user (real UID) with a permission level (effective UID; 0 = root). A change while running suggests privilege escalation. |
+| **Executable path** | The file a process was started from; the suspicious-location check compares it with a list of folders. |
 | **Polling** | The auditor asks the OS for the current state every few seconds instead of being notified by the kernel. |
 | **File access** | The OS tracks each process's open file descriptors. `psutil.open_files()` lists them; paths are compared with the watchlist. |
+| **Resource accounting** | The OS records CPU time and resident memory per process; the resource check reads them. |
 | **Process control** | The OS lets one process send signals to another it has permission over. |
-| **Suspension** | `SIGSTOP` freezes a process (state `stopped`); `SIGCONT` resumes it. Reversible. Used by default for Critical alerts. |
+| **Suspension** | `SIGSTOP` freezes a process (state `stopped`); `SIGCONT` resumes it. Reversible. Default Critical response. |
 | **Termination** | `SIGTERM` asks a process to exit. Optional Critical response. |
 | **OS security** | Access control decides what the auditor may read: macOS denies an unprivileged process the open-file list of other users' processes. |
 
-## 4. Architecture and data flow
+## 4. Architecture
 
 ```
-Operating System (process table)
-        |
-  1. Process Watcher  -- every N seconds -->  process snapshot
-        |
-        +--> 2. Owner Change Detection ------+
-        +--> 3. Sensitive File Detection ----+--> 5. Alert Maker --> 6. Severity Scorer
-        +--> 4. Unusual Parent Detection ----+                              |
-                                                                            |
-              LOW / MEDIUM / HIGH <-----------------------------------------+------> CRITICAL
-                      |                                                                 |
-          7. Suggested Action Advisor                                    9. Protected Process Check
-             (no change is made)                                          |                    |
-                      |                                               protected          not protected
-                      |                                           (no action, why)    8. Auto-Response
-                      |                                                   |          (suspend / terminate)
-                      +-------------> 10. Logging + Screen Display <------+--------------------+
-                                                |
-                                    12. Dashboard + statistics (read-only)
-
-  11. Test Script (tests/) creates controlled activity for the pipeline to detect.
+Running Processes (OS process table)
+        ↓
+Process Watcher                 one snapshot every N seconds
+        ↓
+Detection Layer
+ ├── Owner Change
+ ├── Sensitive File
+ ├── Unusual Parent
+ ├── Suspicious Execution Location
+ ├── Process Creation Burst
+ └── Resource Usage Anomaly
+        ↓
+Alert Maker                     one alert per process; repeats removed (cooldown)
+        ↓
+Event Correlation               adds the same process's findings from earlier polls
+        ↓
+Severity Scorer                 LOW / MEDIUM / HIGH / CRITICAL
+        ↓
+ LOW / MEDIUM / HIGH  → Suggested Action Advisor (no change is made)
+ CRITICAL             → Protected Process Check → Auto-Response (suspend / terminate)
+        ↓
+Logging                         audit.log, alerts.jsonl, terminal
+        ↓
+Dashboard                       reads the log and status files
 ```
 
-A Mermaid version and the step-by-step data flow are in
-[docs/architecture.md](docs/architecture.md).
+More detail and a Mermaid diagram: [docs/architecture.md](docs/architecture.md).
+The dashboard's Architecture page shows the same pipeline.
 
-## 5. The eleven modules
+## 5. The six detection checks
 
-| # | Module | File | What it does |
-|---|---|---|---|
-| 1 | Process Watcher | [src/process_watcher.py](src/process_watcher.py) | Polls all processes through psutil; skips processes that exit, are zombies or deny access |
-| 2 | Owner Change Detection | [src/owner_detector.py](src/owner_detector.py) | Stores each PID's original owner and effective UID; flags any later change; handles PID reuse |
-| 3 | Sensitive File Detection | [src/sensitive_file_detector.py](src/sensitive_file_detector.py) | Compares open files with the editable watchlist |
-| 4 | Unusual Parent Process Detection | [src/parent_detector.py](src/parent_detector.py) | Checks (parent, child) name pairs against configurable rules |
-| 5 | Alert Maker | [src/alert_maker.py](src/alert_maker.py) | One alert per process per cycle, listing every triggered rule; suppresses duplicates |
-| 6 | Severity Scorer | [src/severity_scorer.py](src/severity_scorer.py) | Assigns exactly one of LOW / MEDIUM / HIGH / CRITICAL |
-| 7 | Suggested Action Advisor | [src/action_advisor.py](src/action_advisor.py) | Looks up a recommended next step; never changes a process |
-| 8 | Auto-Response Module | [src/auto_response.py](src/auto_response.py) | Critical only: suspend / terminate, then verify the result with the OS |
-| 9 | Protected Process List | [src/protected_processes.py](src/protected_processes.py) | Decides whether a process may be acted on |
-| 10 | Logging / Screen Display | [src/audit_logger.py](src/audit_logger.py) | Writes `audit.log`, `alerts.jsonl` and the terminal output |
-| 11 | Test Script | [tests/](tests/) | Six scenarios, harness, results table |
-| + | Dashboard and statistics | [src/dashboard.py](src/dashboard.py) | Read-only local web page |
+| # | Check | Rule in one sentence | On its own | Configured in |
+|---|---|---|---|---|
+| 1 | **Owner Change** | The process's owner or effective UID differs from the baseline recorded when it was first seen. | HIGH | automatic baseline |
+| 2 | **Sensitive File Access** | The process has a file open that is on the watchlist. | HIGH (LOW if tagged `low`) | `config/sensitive_files.txt` |
+| 3 | **Unusual Parent** | The (parent, child) name pair matches a rule, e.g. a browser starting a shell. | MEDIUM | `config/parent_rules.json` |
+| 4 | **Suspicious Execution Location** | The process's executable file is inside a listed folder such as `/tmp` or `~/Downloads`. | MEDIUM | `config/suspicious_locations.txt` |
+| 5 | **Process Creation Burst** | One parent created 10 or more children within 10 seconds. | MEDIUM | `config/settings.json` |
+| 6 | **Resource Usage Anomaly** | CPU above 90 % or memory above 80 % for 5 polls in a row. | MEDIUM | `config/settings.json` |
 
-[src/main.py](src/main.py) connects modules 1-10 (`Auditor.run_cycle`).
+Every check follows the same shape: *collect data → apply rule → return
+finding*. All six read the same snapshot from the Process Watcher; none of
+them starts a subprocess or scans the filesystem.
 
-## 6. Technologies
+## 6. Modules
 
-- **Python 3** - standard library plus two packages.
-- **psutil** - reads the process table (`process_iter`, `username`, `uids`,
-  `ppid`, `open_files`, `cpu_percent`, `memory_info`) and controls processes
-  (`suspend`, `terminate`).
-- **Flask** - serves the one-page local dashboard.
-
-No database, no front-end framework, no kernel module, no eBPF.
-
-## 7. Project structure
-
-```
-process-file-security-auditor/
-├── README.md
-├── requirements.txt
-├── .gitignore
-├── src/
-│   ├── main.py                     # pipeline + command-line entry point
-│   ├── config.py                   # loads config/, safe defaults
-│   ├── models.py                   # ProcessRecord, Finding, Alert
-│   ├── process_watcher.py          # module 1
-│   ├── owner_detector.py           # module 2
-│   ├── sensitive_file_detector.py  # module 3
-│   ├── parent_detector.py          # module 4
-│   ├── alert_maker.py              # module 5
-│   ├── severity_scorer.py          # module 6
-│   ├── action_advisor.py           # module 7
-│   ├── auto_response.py            # module 8
-│   ├── protected_processes.py      # module 9
-│   ├── audit_logger.py             # module 10
-│   ├── dashboard.py                # dashboard (Flask)
-│   └── test_hooks.py               # controlled test injection (test mode only)
-├── config/
-│   ├── settings.json               # polling interval, cooldown, response, port
-│   ├── sensitive_files.txt         # watchlist
-│   ├── parent_rules.json           # unusual parent-child rules
-│   └── protected_processes.json    # protected process list
-├── templates/dashboard.html
-├── static/style.css, dashboard.js
-├── tests/
-│   ├── test_runner.py              # runs A-F, writes results
-│   ├── scenario_a.py ... scenario_f.py
-│   ├── harness.py                  # shared test harness
-│   ├── fixture_process.py          # the controlled test process
-│   └── test_units.py               # module-level checks
-├── logs/                           # audit.log, alerts.jsonl, auditor_state.json
-├── results/                        # test_results.md / .csv / .json
-└── docs/
-    ├── architecture.md
-    ├── testing.md
-    └── macos_setup.md
-```
-
-`tests/sandbox/` (dummy files and named test executables) is created
-automatically by the test harness.
-
-## 8. Installation (macOS)
-
-```bash
-python3 --version
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install --upgrade pip
-python3 -m pip install -r requirements.txt
-```
-
-More detail: [docs/macos_setup.md](docs/macos_setup.md).
-
-## 9. Configuration
-
-All configuration is in `config/`. A missing or malformed file never crashes
-the auditor: it prints a warning and uses safe defaults.
-
-**`settings.json`**
-
-| Key | Default | Meaning |
+| Module | File | What it does |
 |---|---|---|
-| `polling_interval_seconds` | `2` | Time between polls (also `--interval`) |
-| `alert_cooldown_seconds` | `120` | How long an identical alert stays quiet |
-| `auto_response_action` | `"suspend"` | `"suspend"` or `"terminate"` for Critical alerts |
-| `auto_response_scope` | `"test_only"` | `"test_only"`: only controlled test processes may be acted on. `"all_unprotected"`: any non-protected process |
-| `log_dir` | `"logs"` | Where logs are written |
-| `dashboard_host` / `dashboard_port` | `127.0.0.1` / `5050` | Dashboard address |
+| Process Watcher | [src/process_watcher.py](src/process_watcher.py) | Polls all processes through psutil; skips processes that exit, are zombies or deny access |
+| Owner Change Detection | [src/owner_detector.py](src/owner_detector.py) | Baseline per PID + creation time; flags a later change |
+| Sensitive File Detection | [src/sensitive_file_detector.py](src/sensitive_file_detector.py) | Compares open files with the watchlist |
+| Unusual Parent Detection | [src/parent_detector.py](src/parent_detector.py) | Checks parent-child name pairs against rules |
+| Suspicious Execution Location | [src/exec_location_detector.py](src/exec_location_detector.py) | Compares executable paths with listed folders |
+| Process Creation Burst | [src/burst_detector.py](src/burst_detector.py) | Counts recently created children per parent |
+| Resource Usage Anomaly | [src/resource_detector.py](src/resource_detector.py) | Counts consecutive polls above a threshold |
+| Alert Maker | [src/alert_maker.py](src/alert_maker.py) | One alert per process per cycle |
+| Alert De-duplication | [src/alert_deduplicator.py](src/alert_deduplicator.py) | Cooldown per process + rule + object |
+| Event Correlation | [src/event_correlation.py](src/event_correlation.py) | Remembers each process's recent findings and adds them to new alerts |
+| Severity Scorer | [src/severity_scorer.py](src/severity_scorer.py) | Fixed table → exactly one level |
+| Suggested Action Advisor | [src/action_advisor.py](src/action_advisor.py) | Recommends a next step; never changes a process |
+| Protected Process List | [src/protected_processes.py](src/protected_processes.py) | Decides whether a process may be acted on |
+| Auto-Response Module | [src/auto_response.py](src/auto_response.py) | Critical only: suspend / terminate, then verify with the OS |
+| Logging / Screen Display | [src/audit_logger.py](src/audit_logger.py) | `audit.log`, `alerts.jsonl`, terminal, status file |
+| Dashboard | [src/dashboard.py](src/dashboard.py), [src/test_lab.py](src/test_lab.py) | Local web pages |
+| Test Script | [tests/](tests/) | Scenarios A-J, harness, unit checks |
 
-**`sensitive_files.txt`** - one path per line; `~` and project-relative paths
-work; a trailing `/` watches a whole directory; ` | low` marks a
-low-sensitivity entry. Edits are picked up while the auditor is running.
+[src/main.py](src/main.py) connects them in `Auditor.run_cycle`.
 
-**`parent_rules.json`** - each rule has `parents` and `children` name
-patterns (case-insensitive, `*` wildcard). Several browsers and several shells
-are listed; add your own.
+## 7. Severity rules
 
-**`protected_processes.json`** - `protected_names`, `protected_pids`, and
-`test_policy_protected_names` (the Scenario F fixture).
-
-## 10. Running
-
-```bash
-python3 -m src.main                 # normal monitoring
-python3 -m src.main --test-mode     # for the demo and the test scenarios
-python3 -m src.main --interval 3    # different polling interval
-python3 -m src.main --cycles 5      # stop after 5 polls
-```
-
-`Ctrl+C` stops it cleanly: logs are flushed and closed, the status file is
-marked stopped, and any test process the auditor suspended is ended.
-
-```bash
-python3 -m src.dashboard            # http://127.0.0.1:5050
-python3 -m tests.test_runner        # all six scenarios
-```
-
-## 11. Severity rules
-
-| Triggered rule(s) | Severity | Response |
+| Triggered rule(s) on one process | Severity | Response |
 |---|---|---|
-| Watched file tagged `low` | **LOW** | Suggestion: review when convenient |
-| Unusual parent process alone | **MEDIUM** | Suggestion: inspect process and parent |
-| Sensitive file alone | **HIGH** | Suggestion: investigate what was accessed |
-| Owner / permission change alone | **HIGH** | Suggestion: investigate now |
-| Several rules, not the Critical pair | highest individual level | Suggestion |
+| Sensitive file tagged `low` | **LOW** | Suggestion |
+| Unusual parent alone | **MEDIUM** | Suggestion |
+| Suspicious execution location alone | **MEDIUM** | Suggestion |
+| Process creation burst alone | **MEDIUM** | Suggestion |
+| Resource usage anomaly alone | **MEDIUM** | Suggestion |
+| Sensitive file alone | **HIGH** | Suggestion |
+| Owner change alone | **HIGH** | Suggestion |
+| Two or more different MEDIUM rules together | **HIGH** | Suggestion |
 | **Owner change + sensitive-file access** | **CRITICAL** | Protected check, then suspend / terminate |
 
-How to say it in one sentence: *each rule has a base level, the alert takes
-the highest one, and owner change together with sensitive-file access is
-escalated to Critical.* Low, Medium and High alerts never change a process.
+In one sentence: *each rule has a base level, the alert takes the highest
+one, two medium findings together make HIGH, and owner change with
+sensitive-file access makes CRITICAL.* The table is fixed, so the same
+findings always give the same severity.
 
-## 12. Protected-process mechanism
+CRITICAL is the only level that can lead to automatic action, and only the
+owner-change + sensitive-file combination can reach it. The three added
+detections can never cause a process to be suspended or terminated.
 
-Before any automatic action, the Auto-Response Module asks the Protected
-Process List. A process is protected if:
+## 8. Event correlation and de-duplication
 
-- its **name** is listed (`launchd`, `WindowServer`, `loginwindow`, `Finder`, ...),
-- its **PID** is listed (0 and 1 are always protected),
-- its name is in the **testing policy** list (Scenario F fixture), or
-- it is **the auditor itself or one of its parents** (your shell and terminal).
+**Correlation.** Findings for the same process (same PID *and* creation time)
+are combined into one alert:
 
-Names are the main mechanism because PIDs change on every boot. The check is
-done when the Critical alert arrives and again on the live process immediately
-before `suspend()` / `terminate()`. If protected: no action, and the alert is
-logged with `Protected: YES` and the reason.
+- findings from the same poll are grouped by the Alert Maker;
+- the Event Correlator remembers each process's findings for
+  `correlation_window_seconds` (60 s) and adds them to a later alert for that
+  process, marked "seen N s earlier".
 
-A second safety layer is the **scope policy**: with the default
-`auto_response_scope: "test_only"`, only processes started by this project's
-test framework can be suspended. A Critical alert on any other process is
-logged as "automatic response withheld" for the user to investigate.
+Example: a program running from `/tmp` (MEDIUM) later creates a burst of
+children; the new alert lists both rules and is rated HIGH.
 
-## 13. Logging
+**De-duplication.** The auditor polls every 2 seconds, so a condition lasting
+a minute would otherwise be reported 30 times. A finding is identified by
+*process + rule + object* (the file path, the executable path, the old/new
+owner...). An alert is raised only if at least one of its findings has not
+been seen during the last `alert_cooldown_seconds` (120 s). The cooldown
+restarts every time the finding is seen again, so a condition that persists is
+reported once, and again only after it has been absent for a full cooldown.
+New behaviour (another rule, another file) is never suppressed.
+
+## 9. Response and protection
+
+- **Low / Medium / High**: the Suggested Action Advisor attaches a
+  recommended next step. Nothing is changed.
+- **Critical**: the Auto-Response Module asks the Protected Process List
+  first. A process is protected if its **name** is listed (`launchd`,
+  `WindowServer`, `loginwindow`, `Finder`, ...), its **PID** is listed (0 and 1
+  always are), its name is in the **testing policy** list (Scenario F fixture),
+  or it is **the auditor itself or one of its parents**. If protected: no
+  action, logged with `Protected: YES` and the reason.
+- The check is repeated on the live process immediately before
+  `suspend()` / `terminate()`, together with a PID-reuse check.
+- **Scope policy**: with the default `auto_response_scope: "test_only"`, only
+  processes started by this project's test framework can be acted on. A
+  Critical alert on any other process is logged as "automatic response
+  withheld".
+- The default action is **suspend**, which is reversible.
+
+## 10. Dashboard
+
+`python3 -m src.dashboard`, then <http://127.0.0.1:5050>. Pages refresh every
+2 seconds.
+
+| Page | Shows |
+|---|---|
+| **Overview** | Auditor status, cards (processes monitored, total / high / critical alerts), system status (auditor, logging, auto-response, polling interval, protected processes, watched paths), severity bars, latest alerts, busiest processes |
+| **Alerts** | Security Activity Timeline with severity filters; Alert Details: why the alert was generated (ticked rules, severity, reasons), process, PPID, user, executable, relevant file, CPU / memory, recommended action, response status, protected-process decision |
+| **Processes** | Live table with search (name or PID) and filters All / Normal / Suspicious / Protected |
+| **Statistics** | Alerts by severity and by detection rule |
+| **Test Lab** | Scenarios A-J with expected and latest results; a Run button for each |
+| **Detection Rules** | The six checks in plain English with the configured values; the severity table |
+| **Architecture** | The pipeline diagram |
+
+Every number comes from the auditor's own files (`logs/auditor_state.json`,
+`logs/alerts.jsonl`) or from `config/`; nothing is hard-coded. If the auditor
+is not running, the header says AUDITOR STOPPED.
+
+The dashboard has no buttons that control processes. The only action it
+offers is starting one of the fixed test scenarios in the Test Lab: the
+request carries a scenario letter that is looked up in a fixed table, no shell
+is used, requests must come from the dashboard page on the same computer, and
+the auditor must be running in `--test-mode`.
+
+## 11. Configuration
+
+All configuration is in `config/`; see [docs/configuration.md](docs/configuration.md)
+for every setting. A missing or malformed file never crashes the auditor: it
+prints a warning and uses safe defaults.
+
+| File | Purpose |
+|---|---|
+| `settings.json` | Polling interval, cooldown, correlation window, burst and resource thresholds, response action and scope, dashboard port |
+| `sensitive_files.txt` | Sensitive-file watchlist |
+| `parent_rules.json` | Unusual parent-child rules |
+| `suspicious_locations.txt` | Suspicious execution folders |
+| `protected_processes.json` | Protected process list |
+
+## 12. Logging
 
 | File | Content |
 |---|---|
@@ -299,23 +291,19 @@ logged as "automatic response withheld" for the user to investigate.
 | `logs/alerts.jsonl` | The same alerts, one JSON object per line |
 | `logs/auditor_state.json` | Current status and process table (for the dashboard) |
 
-Every alert records: timestamp, PID, process name and owner, parent, rule(s),
-reason(s), severity, suggested action or automatic action, result, and the
-protected-process decision for Critical alerts.
-
-## 14. Expected output
-
 ```
 [ALERT]
-  Alert ID: 20261005-121418-36757-0001
-  Time: 2026-10-05 12:14:26
-  PID: 36769
-  Process: python3.10 (owner: chaitanyadatta)
-  Parent: python3.10 (PID 36766)
-  Rule(s): SENSITIVE_FILE
-  Reason: Sensitive file open: .../tests/sandbox/sensitive/fake_ssh_private_key.txt (watchlist entry '...', high sensitivity)
-  Severity: HIGH - Access to a sensitive file on its own
-  Suggested Action: Investigate now: check what the process has read or changed. Check why this process has the watched file open and whether it should have access.
+  Alert ID: 20261005-211332-52914-0010
+  Time: 2026-10-05 21:14:34
+  PID: 52981
+  Process: psa_unusual_location_app (owner: chaitanyadatta)
+  Parent: python3.10 (PID 52911)
+  Executable: .../tests/sandbox/unusual_location/psa_unusual_location_app
+  Rule(s): SUSPICIOUS_EXEC_LOCATION + PROCESS_BURST
+  Reason: Suspicious execution location: ... (inside configured location 'tests/sandbox/unusual_location')
+  Reason: Process creation burst: ... created 12 child processes within 10 seconds (threshold 10); children: sleep
+  Severity: HIGH - 2 medium-level findings on the same process: SUSPICIOUS_EXEC_LOCATION + PROCESS_BURST
+  Suggested Action: Investigate now: check what the process has read or changed. ...
   Action: Suggested action shown (no change made to the process)
 
 [CRITICAL]
@@ -325,106 +313,127 @@ protected-process decision for Critical alerts.
   Protected: NO (not on the protected process list)
   Action: Process suspended
   Result: Success (verified: process state is 'stopped')
-
-[CRITICAL]
-  ...
-  Process: psa_protected_fixture (owner: root)
-  Protected: YES ('psa_protected_fixture' is on the protected process list (testing policy))
-  Action: NONE
-  Result: Automatic response blocked by protected-process policy: ...
 ```
 
-## 15. Dashboard
+## 13. Testing and results
 
-One page at <http://127.0.0.1:5050>, refreshed every 2 seconds:
+`python3 -m tests.test_runner` runs ten scenarios against a real running
+auditor. A-F are the six original scenarios, G-I cover the three added
+detections, and J covers correlation and de-duplication.
 
-- auditor status (RUNNING / STOPPED) and TEST MODE tag,
-- cards: processes monitored, total / low / medium / high / critical alerts,
-- system information: polling interval, logging status, protected-process safety,
-- alert statistics: one bar per severity,
-- recent alerts: time, PID, process, reason, severity, action,
-- process table: PID, name, owner, parent PID, CPU, memory (with a filter box).
-
-Every number comes from the auditor's own files; nothing is hard-coded. If
-the auditor is not running the page says STOPPED and shows no processes. The
-dashboard has no buttons that control processes.
-
-## 16. Testing and results
-
-Six scenarios, one command: `python3 -m tests.test_runner`.
-
-Latest run on the development Mac (macOS 27.0, Python 3.10.11, psutil 7.2.2,
-polling interval 2 s), 2026-10-05:
+Latest run on the development Mac (macOS 27.0, Python 3.10.11, psutil 7.2.2, polling interval 2 s), 2026-10-05 21:39:45: **10 / 10 passed**.
 
 | Scenario | Expected Result | Observed Result | Pass/Fail | Severity | Response | Detection Time | Logging Correct | Protected Safety |
 |---|---|---|---|---|---|---|---|---|
-| A | No Alert | No Alert | PASS | - | None | n/a (watched 8.1s) | Yes | Yes |
-| B | Alert + HIGH + Suggestion | Alert + HIGH + Suggestion | PASS | HIGH | Suggestion | 1.97s | Yes | Yes |
+| A | No Alert | No Alert | PASS | - | None | n/a (watched 8.0s) | Yes | Yes |
+| B | Alert + HIGH + Suggestion | Alert + HIGH + Suggestion | PASS | HIGH | Suggestion | 1.95s | Yes | Yes |
 | C | Alert + HIGH + Suggestion | Alert + HIGH + Suggestion | PASS | HIGH | Suggestion | 1.99s | Yes | Yes |
-| D | Alert + MEDIUM + Suggestion | Alert + MEDIUM + Suggestion | PASS | MEDIUM | Suggestion | 1.90s | Yes | Yes |
-| E | CRITICAL + Auto-response (suspend) | CRITICAL + Suspended (auto) | PASS | CRITICAL | Suspended (auto) | 2.00s | Yes | Yes |
-| F | CRITICAL + No action (protected) + reason logged | CRITICAL + None (protected) | PASS | CRITICAL | None (protected) | 1.99s | Yes | Yes |
+| D | Alert + MEDIUM + Suggestion | Alert + MEDIUM + Suggestion | PASS | MEDIUM | Suggestion | 1.93s | Yes | Yes |
+| E | CRITICAL + Auto-response (suspend) | CRITICAL + Suspended (auto) | PASS | CRITICAL | Suspended (auto) | 2.02s | Yes | Yes |
+| F | CRITICAL + No action (protected) + reason logged | CRITICAL + None (protected) | PASS | CRITICAL | None (protected) | 2.00s | Yes | Yes |
+| G | Alert + MEDIUM + Suggestion | Alert + MEDIUM + Suggestion | PASS | MEDIUM | Suggestion | 1.92s | Yes | Yes |
+| H | Alert + MEDIUM + Suggestion | Alert + MEDIUM + Suggestion | PASS | MEDIUM | Suggestion | 1.96s | Yes | Yes |
+| I | Alert + MEDIUM + Suggestion | Alert + MEDIUM + Suggestion | PASS | MEDIUM | Suggestion | 9.95s | Yes | Yes |
+| J | MEDIUM, then HIGH (combined) + Suggestion; no repeats | MEDIUM, then HIGH (combined) + Suggestion; 2 alerts in total | PASS | HIGH | Suggestion | 1.99s | Yes | Yes |
 
-These values are measured, and they change slightly on every run; the current
-ones are always in `results/test_results.md`. The detection times are near
-2 s because the tests trigger the activity right after a poll, which is the
-worst case for a 2 s polling interval.
+These values are measured and change slightly on every run; the current ones
+are always in `results/test_results.md`. Detection times are close to one
+polling interval (2 s) because the tests trigger the activity right after a
+poll, which is the worst case. Scenario I takes about 10 s by design: the
+rule needs five consecutive polls above the threshold.
 
 **Simulated input.** In scenarios C, E and F the *owner change* is simulated
 through a clearly separated test hook, because an unprivileged macOS process
 cannot change its owner and the project does not perform real privilege
 escalation. Detection, scoring, response and logging are the production code,
-and the alerts are labelled as simulated. Full explanation:
-[docs/testing.md](docs/testing.md).
+and those alerts are labelled as simulated. Scenarios A, B, D, G, H, I and J
+use no simulation. Full explanation: [docs/testing.md](docs/testing.md).
 
-Module-level checks (15 tests, no auditor needed):
-`python3 -m unittest tests.test_units -v`.
+Unit and dashboard checks (57 tests, no auditor needed):
+`python3 -m unittest tests.test_units tests.test_dashboard`.
 
-## 17. Troubleshooting
+## 14. Project structure
+
+```
+process-file-security-auditor/
+├── README.md, requirements.txt, .gitignore
+├── src/
+│   ├── main.py                     # pipeline + command-line entry point
+│   ├── config.py, models.py        # configuration loading; records passed between modules
+│   ├── process_watcher.py
+│   ├── owner_detector.py, sensitive_file_detector.py, parent_detector.py
+│   ├── exec_location_detector.py, burst_detector.py, resource_detector.py
+│   ├── alert_maker.py, alert_deduplicator.py, event_correlation.py
+│   ├── severity_scorer.py, action_advisor.py
+│   ├── protected_processes.py, auto_response.py
+│   ├── audit_logger.py
+│   ├── dashboard.py, test_lab.py
+│   └── test_hooks.py               # controlled test injection (test mode only)
+├── config/                         # settings.json + four rule / list files
+├── templates/                      # base, overview, alerts, processes, statistics, test_lab, rules, architecture
+├── static/                         # style.css + one small script per page
+├── tests/
+│   ├── test_runner.py              # runs A-J, writes results
+│   ├── scenario_a.py ... scenario_j.py
+│   ├── harness.py, fixture_process.py
+│   └── test_units.py, test_dashboard.py
+├── logs/                           # audit.log, alerts.jsonl, auditor_state.json
+├── results/                        # test_results.md / .csv / .json
+└── docs/                           # architecture, testing, configuration, macOS setup
+```
+
+`tests/sandbox/` (dummy files and named test executables) is created
+automatically by the test harness.
+
+## 15. macOS notes and troubleshooting
+
+Setup details and troubleshooting: [docs/macos_setup.md](docs/macos_setup.md).
+No `sudo` and no change to macOS security settings is needed.
 
 | Symptom | Fix |
 |---|---|
 | `No module named 'psutil'` | `source .venv/bin/activate` and reinstall requirements |
 | `No module named src` | Run commands from the project folder |
 | "An auditor is already running" | Stop the other one with `Ctrl+C` |
-| Dashboard port in use | `python3 -m src.dashboard --port 5051` |
-| Dashboard shows STOPPED | Start the auditor in another terminal |
-| Test runner refuses to start | Restart the auditor with `--test-mode` |
+| Dashboard port in use | `python3 -m src.dashboard --port 5051` (macOS uses 5000 for AirPlay, so the default is 5050) |
+| Header shows AUDITOR STOPPED | Start the auditor in another terminal |
+| Test Lab buttons disabled | Start the auditor with `--test-mode` |
 
-## 18. macOS limitations
-
-- **Open files of other users' processes are not readable** without root
-  (about a third of processes on the development Mac). They are skipped, so
-  sensitive-file detection effectively covers the current user's processes.
-  Owner-change and unusual-parent detection cover all processes.
-- **Port 5000** belongs to AirPlay Receiver, so the dashboard uses 5050.
-- **A real owner change cannot be produced** by an unprivileged test, hence
-  the simulated input in scenarios C, E and F.
-- **Named test processes** rely on copying the Python interpreter; framework
-  Python builds may not support this (see [docs/testing.md](docs/testing.md)).
-
-## 19. Safety considerations
+## 16. Safety
 
 - The auditor never opens, reads or modifies a watched file; it compares paths.
 - Low, Medium and High alerts never change a process.
 - Automatic action needs: Critical severity + not protected + within the
   scope policy + same PID and creation time as the alert.
 - Default response is suspend (reversible); default scope is test processes only.
-- No `sudo`, `killall`, `pkill`, `kill -9`, `chmod`, `chown` or `rm -rf` is used.
+- No `sudo`, `killall`, `pkill`, `kill -9`, `chmod`/`chown` of system files or `rm -rf` is used.
+- The dashboard cannot run arbitrary commands.
 - The tests touch only dummy files and their own test processes, and clean up.
 
-## 20. Known limitations
+## 17. Limitations
 
-- **Polling gap.** Activity shorter than one polling interval (a file opened
-  and closed between two polls, a very short-lived process) can be missed, and
-  detection takes up to one interval. A shorter interval detects faster but
-  uses more CPU.
-- **Path-based file detection.** Only files that are open at the moment of a
-  poll are seen; reads through other means are not.
+- **Polling is not kernel-level monitoring.** Activity shorter than one
+  polling interval (a file opened and closed between two polls, a child that
+  starts and exits between two polls) can be missed, and detection takes up to
+  one interval.
+- **macOS permissions limit what can be read.** Without root, the open files,
+  command line, CPU and memory of other users' processes are not readable, so
+  the sensitive-file and resource checks effectively cover the current user's
+  processes. Name, owner, parent and executable path are readable for
+  (almost) every process.
+- **Suspicious locations are a heuristic.** Legitimately running an installer
+  from `~/Downloads` or a build output from `/tmp` raises a MEDIUM alert.
+- **Process-burst detection is threshold-based.** Builds and scripts that
+  start many processes can reach it; very short-lived children are not counted.
+- **Resource thresholds are fixed rules.** Legitimate heavy work (a compile, a
+  video call) can raise a MEDIUM alert; CPU % is per core.
+- **Owner change is direction-blind.** A daemon that drops privileges
+  (root → service account) after it was first seen is reported like an
+  escalation. It is reported once while it lasts.
 - **Name-based rules.** Parent rules and the protected list match process
   names, which a malicious program could imitate.
-- **Heuristics, not proof.** An alert means "unusual", not "attack"; legitimate
-  software can trigger a rule (for example a service that drops privileges).
+- **Heuristics, not proof.** An alert means "unusual", not "attack".
+- **Simulated owner change in tests**, as described above.
 - **Baseline starts at first sight.** A process that changed owner before the
   auditor started is recorded with its current owner.
 
@@ -436,11 +445,9 @@ and active response across many hosts. This project uses the same idea -
 observe, apply rules, rate, respond, log - but in user space with polling,
 which is far simpler and portable at the cost of the polling gap above.
 
-## 21. Future improvements
+## 18. Possible future work
 
-- Optional matplotlib timeline of alerts from `alerts.jsonl`.
-- Per-entry severity levels beyond `low` / `high` in the watchlist.
+- Event-based monitoring (Endpoint Security on macOS, eBPF on Linux) to close the polling gap.
+- Distinguishing privilege drops from escalations in the owner-change rule.
 - A user-approved "resume" command for suspended processes.
-- Event-based monitoring (Endpoint Security on macOS, eBPF on Linux) to close
-  the polling gap.
-- Learning normal parent-child pairs automatically instead of fixed rules.
+- Learning normal parent-child pairs instead of fixed rules.

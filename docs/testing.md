@@ -3,10 +3,10 @@
 ## How to run
 
 ```bash
-python3 -m tests.test_runner          # all six scenarios + results table
-python3 -m tests.scenario_b           # one scenario (a, b, c, d, e or f)
-python3 -m tests.scenario_e --hold 15 # keep the test process 15 s after the check
-python3 -m unittest tests.test_units -v   # module-level checks, no auditor needed
+python3 -m tests.test_runner              # scenarios A-J + results table
+python3 -m tests.scenario_b               # one scenario (a ... j)
+python3 -m tests.scenario_e --hold 15     # keep the test process 15 s after the check
+python3 -m unittest tests.test_units tests.test_dashboard -v   # 57 checks, no auditor needed
 ```
 
 The scenarios need an auditor running in **test mode**:
@@ -18,6 +18,9 @@ The scenarios need an auditor running in **test mode**:
 - if one is running *without* `--test-mode`, the runner stops with a message.
 
 Results are written to `results/test_results.md`, `.csv` and `.json`.
+
+Scenarios can also be started from the dashboard's **Test Lab** page, one at a
+time, while an auditor is running in test mode.
 
 ## How a scenario is judged
 
@@ -33,22 +36,33 @@ Nothing is hard-coded. For each scenario the harness (`tests/harness.py`):
 7. checks that no alert shows an action against a protected process.
 
 PASS means every one of those checks passed. The individual checks are listed
-per scenario in `results/test_results.md`.
+per scenario in `results/test_results.md` and on the Test Lab page.
 
 **Detection time** = alert timestamp minus the moment of the activity. The
 harness triggers the activity just after a poll, so the measured values are
 close to the worst case of one polling interval (about 2 s by default).
 
-## The six scenarios
+## The scenarios
 
-| | What the test does | Expected |
-|---|---|---|
-| A | A test process opens an ordinary file and is watched for 3 polling cycles | No alert, nothing logged |
-| B | A test process opens the dummy "private key" file on the watchlist | Alert, HIGH, suggestion, process untouched |
-| C | The owner of a running test process changes (**simulated input**) | Alert, HIGH, suggestion, process untouched |
-| D | A process named `psa_fake_browser` starts a real `/bin/sh` child | Alert on the shell, MEDIUM, suggestion |
-| E | Owner change (**simulated input**) + real sensitive-file access | CRITICAL, not protected, process really suspended |
-| F | The same combination on a process named `psa_protected_fixture` | CRITICAL, protected, no action, reason logged |
+A-F are the six scenarios from the project plan. G-I cover the three added
+detections. J covers correlation and de-duplication.
+
+| | What the test does | Expected | Simulated input? |
+|---|---|---|---|
+| A | A test process opens an ordinary file and is watched for 3 polls | No alert, nothing logged | no |
+| B | A test process opens the dummy "private key" file on the watchlist | Alert, HIGH, suggestion, process untouched | no |
+| C | The owner of a running test process changes | Alert, HIGH, suggestion, process untouched | **owner change** |
+| D | A process named `psa_fake_browser` starts a real `/bin/sh` child | Alert on the shell, MEDIUM, suggestion | no |
+| E | Owner change + real sensitive-file access | CRITICAL, not protected, process really suspended | **owner change** |
+| F | The same combination on a process named `psa_protected_fixture` | CRITICAL, protected, no action, reason logged | **owner change** |
+| G | A test program whose executable is in `tests/sandbox/unusual_location/` | Alert, MEDIUM, suggestion; real path and matched location recorded | no |
+| H | A test process starts 12 `/bin/sleep` children at once | One alert on the parent, MEDIUM, suggestion; child count, threshold and window recorded; not repeated | no |
+| I | A test process keeps one CPU core busy for about 20 s | Alert, MEDIUM, suggestion, only after 5 consecutive polls | no |
+| J | The program from G then starts a burst as in H | First alert MEDIUM, second alert lists both rules and is HIGH, suggestion only, exactly 2 alerts | no |
+
+The memory threshold of the resource rule uses the same code path as CPU. It
+is covered by unit checks only, because filling 80 % of the machine's RAM in
+a test would not be safe.
 
 ## Production logic vs controlled test injection
 
@@ -57,12 +71,15 @@ This distinction matters, so it is stated exactly.
 ### What is real in every scenario
 
 - The Process Watcher reads real processes from the real process table.
-- All detection, alert, severity, advisor, protected-list, auto-response and
-  logging code is the production code - the tests have no separate copy.
+- All detection, alert, correlation, severity, advisor, protected-list,
+  auto-response and logging code is the production code - the tests have no
+  separate copy.
 - File access is real: the test process really opens the file, and the auditor
   really finds it through `psutil.open_files()`.
-- The parent-child relationship in D is real: the shell's PPID really is the
-  fake browser's PID.
+- Parent-child relationships are real (D, H, J): the PPIDs really are the
+  test process's PID.
+- The executable path in G and J is real.
+- The CPU load in I is real.
 - The suspension in E is real, and it is verified by reading the process state
   back from the OS (`stopped`).
 - All timings are measured.
@@ -90,7 +107,7 @@ Instead:
 Safeguards on the hook:
 
 - it is only active when the auditor is started with `--test-mode`
-  (the terminal and the dashboard show a TEST MODE banner);
+  (the terminal and the dashboard show a TEST MODE marker);
 - it only applies to a process that carries the test marker
   `--psa-test-process` in its command line **and** matches the PID and
   creation time in the request - a real process can never be affected;
@@ -108,13 +125,16 @@ detector runs against every real process on the machine all the time.
 
 ### Test fixtures that are not simulation
 
-- **`psa_fake_browser` (D)** - a real process with that name. It is listed
-  next to the real browsers in `config/parent_rules.json`. Using it avoids
-  having to make Safari or Chrome start a shell.
+- **`psa_fake_browser` (D)** - a real process with that name, listed next to
+  the real browsers in `config/parent_rules.json`. Using it avoids having to
+  make Safari or Chrome start a shell.
 - **`psa_protected_fixture` (F)** - a real process with that name, listed
   under `test_policy_protected_names` in `config/protected_processes.json`.
   It exercises the same protected-list check that guards `launchd` or
   `WindowServer`, without putting a real system process at risk.
+- **`psa_unusual_location_app` (G, J)** - a real program file inside
+  `tests/sandbox/unusual_location/`, which is listed in
+  `config/suspicious_locations.txt`.
 - **Sandbox files** - `tests/sandbox/sensitive/*.txt` are dummy text files
   created by the harness. No real key or password file is ever opened.
 
@@ -127,15 +147,28 @@ called `psa_fake_browser`, the harness copies the Python interpreter to
 
 This works with ordinary Python builds (pyenv, Homebrew, system). Some
 "framework" builds re-execute themselves under the name `Python`; if that
-happens, scenarios D and F report a clear set-up error instead of a wrong
-result. Use a pyenv or Homebrew Python for the tests in that case.
+happens, scenarios D, F, G and J report a clear set-up error instead of a
+wrong result. Use a pyenv or Homebrew Python for the tests in that case.
+
+## Unit and dashboard checks
+
+`tests/test_units.py` (46 checks) exercises each module with small hand-built
+inputs: watcher fields, baseline and PID reuse, watchlist matching, parent
+rules, location matching, burst counting, the resource persistence rule,
+severity table, combination rules, correlation across polls, de-duplication
+(100 identical polls → 1 alert), the advisor and the protected list.
+
+`tests/test_dashboard.py` (11 checks) uses Flask's test client: every page and
+API endpoint answers, the API has the fields the pages use, and the Test Lab
+refuses requests without the dashboard header, with a foreign host, with GET,
+or for anything but the fixed scenario letters.
 
 ## Safety of the tests
 
 - Test processes only read files inside `tests/sandbox/`, and exit on their own
-  (lifetime limit, or when the harness closes their input).
+  (lifetime limit, or when the harness closes their input). The CPU load in I
+  is one core for a limited time.
 - The harness stops every process it started, including the suspended one.
 - If the auditor is stopped while a test process is suspended, the auditor
   ends that test process during shutdown.
-- No `sudo`, `killall`, `pkill`, `chmod`, `chown` or system-file change is used
-  anywhere.
+- No `sudo`, `killall`, `pkill`, or system-file change is used anywhere.

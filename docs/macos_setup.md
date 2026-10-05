@@ -33,9 +33,9 @@ source .venv/bin/activate
 | Start the auditor | `python3 -m src.main` |
 | Start the auditor for the demo / tests | `python3 -m src.main --test-mode` |
 | Start the dashboard | `python3 -m src.dashboard` then open <http://127.0.0.1:5050> |
-| Run all six tests | `python3 -m tests.test_runner` |
-| Run one scenario | `python3 -m tests.scenario_b` |
-| Module-level checks | `python3 -m unittest tests.test_units -v` |
+| Run all scenarios (A-J) | `python3 -m tests.test_runner` |
+| Run one scenario | `python3 -m tests.scenario_b` (a ... j) |
+| Unit and dashboard checks | `python3 -m unittest tests.test_units tests.test_dashboard -v` |
 | Stop the auditor or dashboard | `Ctrl+C` in its terminal |
 
 Always run the commands from the project folder (they use `python3 -m ...`).
@@ -50,10 +50,12 @@ different port: `python3 -m src.dashboard --port 5051`, or change
 **Open files of other users' processes cannot be read.** Without root, macOS
 only lets you list the open files (and command line, memory) of processes you
 own. For system processes psutil raises `AccessDenied`; the auditor notes it
-and carries on. In practice this means sensitive-file detection covers your
-own user's processes, which is where the test scenarios run. Name, owner,
-UIDs and parent PID are readable for every process, so owner-change and
-unusual-parent detection cover all processes.
+and carries on. In practice this means the sensitive-file and resource checks
+cover your own user's processes, which is where the test scenarios run (the
+dashboard shows memory as `n/a` for the others). Name, owner, UIDs, parent
+PID and executable path are readable for (almost) every process, so the
+owner-change, unusual-parent, suspicious-location and process-burst checks
+cover all processes.
 
 **No permission prompt is expected.** The auditor does not read the content
 of any watched file - it only compares paths - so it needs no Full Disk
@@ -71,7 +73,8 @@ designed and tested to run unprivileged.
 | `ModuleNotFoundError: No module named 'psutil'` | Activate the venv: `source .venv/bin/activate`, then reinstall requirements |
 | `No module named src` | You are not in the project folder; `cd` into it |
 | "An auditor is already running" | Another terminal is running it; stop that one with `Ctrl+C` |
-| Dashboard shows STOPPED | Start the auditor in another terminal |
+| Dashboard header shows AUDITOR STOPPED | Start the auditor in another terminal |
+| Test Lab buttons are disabled | The auditor must be running with `--test-mode` |
 | "Could not start the dashboard on port ..." | Use `--port 5051` |
 | Test runner: "running WITHOUT --test-mode" | Restart the auditor with `--test-mode` |
-| Scenario D / F: "should be named ... but the OS reports 'Python'" | Framework Python build; use a pyenv / Homebrew Python (see `docs/testing.md`) |
+| Scenario D / F / G / J: "should be named ... but the OS reports 'Python'" | Framework Python build; use a pyenv / Homebrew Python (see `docs/testing.md`) |
