@@ -2,6 +2,9 @@
 
     python3 -m tests.test_runner
 
+A-F are the six original scenarios; G, H and I cover the three added
+detections; J covers event correlation and de-duplication.
+
 If an auditor is already running in --test-mode it is used (so the alerts also
 appear on the dashboard). Otherwise a temporary auditor is started and stopped
 automatically. Results are saved in results/test_results.md, .csv and .json.

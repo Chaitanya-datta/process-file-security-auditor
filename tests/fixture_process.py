@@ -1,4 +1,4 @@
-"""Controlled test process used by scenarios A-F.
+"""Controlled test process used by the test scenarios (A-J).
 
 This is a harmless stand-in for "a process doing something". It only ever:
   * opens a file inside tests/sandbox/ for reading and keeps it open,

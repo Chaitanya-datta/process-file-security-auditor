@@ -91,10 +91,18 @@ class Fixture:
         self.create_time: float = psutil.Process(self.pid).create_time()
 
     def open_file(self, path: Path) -> float:
-        """Ask the process to open *path*; returns the time it did so."""
+        """Ask the process to open *path*; returns the time the request was sent.
+
+        The request time (not the time the process reports back) is used as
+        the start of the activity: the OS can show the new file descriptor to
+        the auditor before the open() call has returned inside the test
+        process, which once produced a negative detection time.
+        """
+        requested_at = time.time()
         self.popen.stdin.write(f"open {path}\n")
         self.popen.stdin.flush()
-        return float(_wait_event(self._events, "opened")["time"])
+        _wait_event(self._events, "opened")
+        return requested_at
 
     def spawn_burst(self, count: int) -> float:
         """Ask the process to start *count* sleeping children; returns when it finished."""
