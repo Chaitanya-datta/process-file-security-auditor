@@ -24,7 +24,9 @@ from . import config
 from .audit_logger import read_alerts, read_state
 from .main import is_auditor_running
 
-RECENT_ALERT_LIMIT = 50
+RECENT_ALERT_LIMIT = 50       # rows in the overview table
+TIMELINE_LIMIT = 200          # alerts sent to the timeline page
+OVERVIEW_TIMELINE_LIMIT = 6
 REFRESH_SECONDS = 2
 
 app = Flask(
@@ -36,12 +38,82 @@ app = Flask(
 # Navigation shown on every page: (label, Flask endpoint name).
 NAV = [
     ("Overview", "index"),
+    ("Alerts", "alerts_page"),
 ]
 
 
 @app.context_processor
 def _template_globals() -> dict:
     return {"nav": NAV, "refresh_seconds": REFRESH_SECONDS}
+
+
+# alerts.jsonl is re-parsed only when the file has changed.
+_alert_cache: dict = {"stamp": None, "alerts": []}
+
+
+def _all_alerts(settings: config.Settings) -> List[dict]:
+    try:
+        stat = settings.alerts_file.stat()
+        stamp = (stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        stamp = None
+    if stamp != _alert_cache["stamp"]:
+        _alert_cache["alerts"] = read_alerts(settings.alerts_file)
+        _alert_cache["stamp"] = stamp
+    return _alert_cache["alerts"]
+
+
+def _session_alerts(settings: config.Settings, session_id: Optional[str]) -> List[dict]:
+    if not session_id:
+        return []
+    return [a for a in _all_alerts(settings) if a.get("session_id") == session_id]
+
+
+def _alert_title(alert: dict) -> str:
+    return " + ".join(config.RULE_LABELS.get(rule, rule) for rule in alert.get("rules", []))
+
+
+def _timeline_item(alert: dict) -> dict:
+    return {
+        "id": alert.get("alert_id"),
+        "time": alert.get("time"),
+        "severity": alert.get("severity"),
+        "title": _alert_title(alert),
+        "process": alert.get("process_name"),
+        "pid": alert.get("pid"),
+        "simulated": bool(alert.get("simulated")),
+    }
+
+
+def _alert_details(alert: dict) -> dict:
+    """Everything the Alert Details panel shows, taken from the logged alert."""
+    carried = set(alert.get("correlated_rules", []))
+    triggered = alert.get("rules", [])
+    item = _timeline_item(alert)
+    item.update({
+        "ppid": alert.get("ppid"),
+        "parent": alert.get("parent_name"),
+        "user": alert.get("owner"),
+        "executable": alert.get("executable", ""),
+        "cpu_percent": alert.get("cpu_percent"),
+        "memory_percent": alert.get("memory_percent"),
+        "rules": [
+            {"label": label, "triggered": rule in triggered, "carried_over": rule in carried}
+            for rule, label in config.RULE_LABELS.items()
+        ],
+        "severity_explanation": alert.get("severity_explanation", ""),
+        "correlation": alert.get("correlation", ""),
+        "reasons": alert.get("reasons", []),
+        "files": alert.get("sensitive_paths", []),
+        "recommended_action": alert.get("suggested_action", ""),
+        "response_type": alert.get("response_type", ""),
+        "action_taken": alert.get("action_taken", ""),
+        "result": alert.get("result", ""),
+        "protected": alert.get("protected"),
+        "protected_reason": alert.get("protected_reason", ""),
+        "is_test_process": bool(alert.get("is_test_process")),
+    })
+    return item
 
 
 def _describe_action(alert: dict) -> str:
@@ -62,7 +134,7 @@ def build_status() -> dict:
 
     # Alerts of the most recent auditor session (the running one, if any).
     session_id: Optional[str] = state.get("session_id")
-    alerts: List[dict] = read_alerts(settings.alerts_file, session_id) if session_id else []
+    alerts: List[dict] = _session_alerts(settings, session_id)
     counts = {level: 0 for level in config.SEVERITY_ORDER}
     for alert in alerts:
         if alert.get("severity") in counts:
@@ -118,6 +190,7 @@ def build_status() -> dict:
                                 if "suspicious_locations" in state else "")
                              if "watchlist_entries" in state else "auditor has not been started yet",
         },
+        "timeline": [_timeline_item(a) for a in reversed(alerts[-OVERVIEW_TIMELINE_LIMIT:])],
         "processes": processes,
         "alerts": recent,
     }
@@ -126,6 +199,27 @@ def build_status() -> dict:
 @app.route("/")
 def index():
     return render_template("overview.html")
+
+
+@app.route("/alerts")
+def alerts_page():
+    return render_template("alerts.html")
+
+
+@app.route("/api/alerts")
+def api_alerts():
+    try:
+        header = build_status()
+        session = _session_alerts(config.load_settings(), header["session_id"])
+        for key in ("processes", "alerts", "timeline"):
+            header.pop(key, None)
+        return jsonify({
+            "header": header,
+            "total": len(session),
+            "alerts": [_alert_details(a) for a in reversed(session[-TIMELINE_LIMIT:])],
+        })
+    except Exception as exc:
+        return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
 
 
 @app.route("/api/status")

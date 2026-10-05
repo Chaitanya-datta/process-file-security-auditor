@@ -81,6 +81,10 @@ class Alert:
     findings: List[Dict[str, object]]
     is_test_process: bool = False
     simulated: bool = False
+    # --- snapshot of the process at the moment of the alert ---
+    executable: str = ""
+    cpu_percent: float = 0.0
+    memory_percent: float = 0.0
     # --- filled in by the Event Correlator ---
     correlated_rules: List[str] = field(default_factory=list)   # rules carried over from earlier polls
     # --- filled in by the Severity Scorer ---

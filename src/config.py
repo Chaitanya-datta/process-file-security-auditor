@@ -52,6 +52,16 @@ RULE_SUSPICIOUS_LOCATION = "SUSPICIOUS_EXEC_LOCATION"
 RULE_PROCESS_BURST = "PROCESS_BURST"
 RULE_RESOURCE_ANOMALY = "RESOURCE_ANOMALY"
 
+# Display names of the six detection rules, in the order they are shown.
+RULE_LABELS = {
+    RULE_SENSITIVE_FILE: "Sensitive File Access",
+    RULE_OWNER_CHANGE: "Owner Change",
+    RULE_UNUSUAL_PARENT: "Unusual Parent",
+    RULE_SUSPICIOUS_LOCATION: "Suspicious Execution Location",
+    RULE_PROCESS_BURST: "Process Creation Burst",
+    RULE_RESOURCE_ANOMALY: "Resource Usage Anomaly",
+}
+
 LOW, MEDIUM, HIGH, CRITICAL = "LOW", "MEDIUM", "HIGH", "CRITICAL"
 SEVERITY_ORDER = [LOW, MEDIUM, HIGH, CRITICAL]
 

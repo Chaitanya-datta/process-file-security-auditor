@@ -1,24 +1,16 @@
 // Security Overview page.
 
-function renderAlerts(alerts) {
-  const body = byId("alerts-body");
-  body.replaceChildren();
-  if (!alerts.length) {
-    body.appendChild(emptyRow("No alerts in this session.", 6));
+function renderTimeline(items) {
+  const box = byId("timeline");
+  box.replaceChildren();
+  if (!items.length) {
+    box.appendChild(el("p", "empty", "No alerts in this session."));
     return;
   }
-  for (const a of alerts) {
-    const tr = el("tr");
-    tr.appendChild(cell(a.time, "nowrap mono"));
-    tr.appendChild(cell(a.pid, "mono"));
-    tr.appendChild(cell(a.process));
-    tr.appendChild(cell(a.reason, "wrap"));
-    const severity = el("td");
-    severity.appendChild(severityBadge(a.severity));
-    if (a.simulated) severity.appendChild(el("span", "tag small", "simulated input"));
-    tr.appendChild(severity);
-    tr.appendChild(cell(a.action, "wrap"));
-    body.appendChild(tr);
+  for (const item of items) {
+    const link = timelineEntry(item);
+    link.href = "/alerts#" + encodeURIComponent(item.id);
+    box.appendChild(link);
   }
 }
 
@@ -73,7 +65,7 @@ function render(data) {
   byId("i-protected").textContent = data.system.protected_processes;
   byId("i-watched").textContent = data.system.watched_paths;
 
-  renderAlerts(data.alerts);
+  renderTimeline(data.timeline);
   lastProcesses = data.processes;
   renderProcesses();
 }

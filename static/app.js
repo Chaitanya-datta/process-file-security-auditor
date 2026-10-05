@@ -30,6 +30,19 @@ function severityBadge(severity) {
   return el("span", "badge sev-" + String(severity).toLowerCase(), severity);
 }
 
+// One entry of the Security Activity Timeline (an <a> so it can be a link or a button).
+function timelineEntry(item) {
+  const entry = el("a", "timeline-entry sev-" + String(item.severity).toLowerCase());
+  entry.appendChild(el("span", "timeline-time mono", String(item.time).slice(11)));
+  entry.appendChild(severityBadge(item.severity));
+  const text = el("span", "timeline-text");
+  text.appendChild(el("span", "timeline-title", item.title));
+  text.appendChild(el("span", "timeline-process mono", `${item.process} | PID ${item.pid}`));
+  entry.appendChild(text);
+  if (item.simulated) entry.appendChild(el("span", "tag small", "simulated input"));
+  return entry;
+}
+
 function showError(message) {
   const box = byId("error");
   box.textContent = message;

@@ -75,6 +75,9 @@ class AlertMaker:
                     findings=[asdict(f) for f in process_findings],
                     is_test_process=record.is_test_process,
                     simulated=any(f.simulated for f in process_findings),
+                    executable=record.exe,
+                    cpu_percent=record.cpu_percent,
+                    memory_percent=record.memory_percent,
                 )
             )
 

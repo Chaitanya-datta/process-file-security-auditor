@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Alerts{% endblock %}
+{% block content %}
+<section class="alerts-layout">
+  <div class="panel">
+    <h2>Security Activity Timeline <span class="hint" id="timeline-hint"></span></h2>
+    <div class="chips" id="severity-chips" role="group" aria-label="Filter by severity">
+      <button type="button" class="chip active" data-severity="">All</button>
+      <button type="button" class="chip" data-severity="CRITICAL">Critical</button>
+      <button type="button" class="chip" data-severity="HIGH">High</button>
+      <button type="button" class="chip" data-severity="MEDIUM">Medium</button>
+      <button type="button" class="chip" data-severity="LOW">Low</button>
+    </div>
+    <div class="timeline" id="timeline"><p class="empty">No alerts in this session.</p></div>
+  </div>
+
+  <div class="panel" id="details">
+    <h2>Alert Details</h2>
+    <p class="empty" id="details-empty">Select an alert in the timeline to see why it was generated.</p>
+    <div id="details-body" class="hidden">
+      <div class="details-head">
+        <span id="d-badge"></span>
+        <div>
+          <div class="details-title" id="d-title"></div>
+          <div class="details-sub mono" id="d-sub"></div>
+        </div>
+      </div>
+
+      <h3>Why this alert was generated</h3>
+      <ul class="rule-checklist" id="d-rules"></ul>
+      <dl class="info">
+        <dt>Severity</dt><dd id="d-severity"></dd>
+        <dt>Reason</dt><dd><ul class="reason-list" id="d-reasons"></ul></dd>
+      </dl>
+
+      <h3>Process</h3>
+      <dl class="info">
+        <dt>Process</dt><dd id="d-process"></dd>
+        <dt>PID</dt><dd class="mono" id="d-pid"></dd>
+        <dt>Parent (PPID)</dt><dd id="d-parent"></dd>
+        <dt>User</dt><dd id="d-user"></dd>
+        <dt>Executable path</dt><dd class="mono" id="d-exe"></dd>
+        <dt>Relevant file</dt><dd class="mono" id="d-files"></dd>
+        <dt>CPU / memory</dt><dd id="d-usage"></dd>
+        <dt>Timestamp</dt><dd class="mono" id="d-time"></dd>
+      </dl>
+
+      <h3>Response</h3>
+      <dl class="info">
+        <dt>Recommended action</dt><dd id="d-recommended"></dd>
+        <dt>Response status</dt><dd id="d-response"></dd>
+        <dt>Protected process</dt><dd id="d-protected"></dd>
+      </dl>
+      <p class="panel-note mono" id="d-id"></p>
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='alerts.js') }}"></script>{% endblock %}

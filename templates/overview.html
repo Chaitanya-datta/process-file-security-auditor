@@ -33,13 +33,9 @@
 </section>
 
 <section class="panel">
-  <h2>Recent Alerts <span class="hint">newest first</span></h2>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Time</th><th>PID</th><th>Process</th><th>Reason</th><th>Severity</th><th>Action</th></tr></thead>
-      <tbody id="alerts-body"><tr><td colspan="6" class="empty">No alerts.</td></tr></tbody>
-    </table>
-  </div>
+  <h2>Security Activity Timeline <span class="hint">latest alerts, newest first</span>
+    <a class="panel-link" href="{{ url_for('alerts_page') }}">All alerts and details &rarr;</a></h2>
+  <div class="timeline compact" id="timeline"><p class="empty">No alerts in this session.</p></div>
 </section>
 
 <section class="panel">

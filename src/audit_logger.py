@@ -42,6 +42,7 @@ def format_alert(alert: Alert) -> str:
         f"  PID: {alert.pid}",
         f"  Process: {alert.process_name} (owner: {alert.owner or 'unknown'})",
         f"  Parent: {alert.parent_name} (PID {alert.ppid})",
+        f"  Executable: {alert.executable or 'unknown'}",
         f"  Rule(s): {' + '.join(alert.rules)}",
     ]
     lines += [f"  Reason: {reason}" for reason in alert.reasons]
