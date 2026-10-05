@@ -96,6 +96,12 @@ class Fixture:
         self.popen.stdin.flush()
         return float(_wait_event(self._events, "opened")["time"])
 
+    def spawn_burst(self, count: int) -> float:
+        """Ask the process to start *count* sleeping children; returns when it finished."""
+        self.popen.stdin.write(f"burst {count}\n")
+        self.popen.stdin.flush()
+        return float(_wait_event(self._events, "burst")["time"])
+
     def state(self) -> str:
         """Real OS state of the process: 'running', 'stopped', 'gone', ..."""
         return process_state(self.pid)

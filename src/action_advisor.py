@@ -28,6 +28,9 @@ RULE_SUGGESTIONS = {
     config.RULE_SUSPICIOUS_LOCATION:
         "Check what this program is and why it runs from that folder; move trusted "
         "software to a normal install location.",
+    config.RULE_PROCESS_BURST:
+        "Check what the parent is running and whether starting this many child "
+        "processes is expected (a build or script) or runaway behaviour.",
 }
 
 

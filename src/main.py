@@ -32,6 +32,7 @@ from .action_advisor import SuggestedActionAdvisor
 from .alert_maker import AlertMaker
 from .audit_logger import AuditLogger, read_state
 from .auto_response import AutoResponseModule
+from .burst_detector import ProcessBurstDetector
 from .exec_location_detector import SuspiciousLocationDetector
 from .models import Alert, Snapshot
 from .owner_detector import OwnerChangeDetector
@@ -75,6 +76,11 @@ class Auditor:
         self.file_detector = SensitiveFileDetector()
         self.parent_detector = UnusualParentDetector()
         self.location_detector = SuspiciousLocationDetector()
+        self.burst_detector = ProcessBurstDetector(
+            settings.process_burst_threshold,
+            settings.process_burst_window_seconds,
+            settings.process_burst_ignored_parents,
+        )
         self.alert_maker = AlertMaker(self.session_id, settings.alert_cooldown_seconds)
         self.scorer = SeverityScorer()
         self.advisor = SuggestedActionAdvisor()
@@ -95,6 +101,7 @@ class Auditor:
             + self.file_detector.check(snapshot)
             + self.parent_detector.check(snapshot)
             + self.location_detector.check(snapshot)
+            + self.burst_detector.check(snapshot)
         )
         alerts = self.alert_maker.build(findings, snapshot)
 
@@ -147,6 +154,8 @@ class Auditor:
             "watchlist_entries": self.file_detector.watchlist_size,
             "parent_rules": self.parent_detector.rule_count,
             "suspicious_locations": self.location_detector.location_count,
+            "process_burst_threshold": self.settings.process_burst_threshold,
+            "process_burst_window_seconds": self.settings.process_burst_window_seconds,
             "processes_monitored": len(processes),
             "open_files_unreadable": snapshot.open_files_denied if snapshot else 0,
             "baseline_size": self.owner_detector.baseline_size,

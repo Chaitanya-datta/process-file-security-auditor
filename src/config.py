@@ -49,6 +49,7 @@ RULE_OWNER_CHANGE = "OWNER_CHANGE"
 RULE_SENSITIVE_FILE = "SENSITIVE_FILE"
 RULE_UNUSUAL_PARENT = "UNUSUAL_PARENT"
 RULE_SUSPICIOUS_LOCATION = "SUSPICIOUS_EXEC_LOCATION"
+RULE_PROCESS_BURST = "PROCESS_BURST"
 
 LOW, MEDIUM, HIGH, CRITICAL = "LOW", "MEDIUM", "HIGH", "CRITICAL"
 SEVERITY_ORDER = [LOW, MEDIUM, HIGH, CRITICAL]
@@ -90,6 +91,10 @@ def _read_json(path: Path) -> Optional[dict]:
 class Settings:
     polling_interval_seconds: float = 2.0
     alert_cooldown_seconds: float = 120.0
+    # Process Creation Burst: this many children within this many seconds.
+    process_burst_threshold: int = 10
+    process_burst_window_seconds: float = 10.0
+    process_burst_ignored_parents: List[str] = field(default_factory=lambda: ["launchd", "kernel_task"])
     auto_response_action: str = "suspend"      # "suspend" or "terminate"
     auto_response_scope: str = "test_only"     # "test_only" or "all_unprotected"
     log_dir: Path = PROJECT_ROOT / "logs"
@@ -122,6 +127,14 @@ def load_settings() -> Settings:
 
     settings.polling_interval_seconds = number("polling_interval_seconds", 2.0, 0.5)
     settings.alert_cooldown_seconds = number("alert_cooldown_seconds", 120.0, 0.0)
+
+    settings.process_burst_threshold = int(number("process_burst_threshold", 10, 2))
+    settings.process_burst_window_seconds = number("process_burst_window_seconds", 10.0, 1.0)
+    ignored = data.get("process_burst_ignored_parents", settings.process_burst_ignored_parents)
+    if isinstance(ignored, list):
+        settings.process_burst_ignored_parents = [str(name) for name in ignored]
+    else:
+        _warn("settings.json: 'process_burst_ignored_parents' must be a list - using the default.")
 
     action = data.get("auto_response_action", "suspend")
     if action in ("suspend", "terminate"):

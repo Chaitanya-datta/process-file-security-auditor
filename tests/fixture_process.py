@@ -3,6 +3,7 @@
 This is a harmless stand-in for "a process doing something". It only ever:
   * opens a file inside tests/sandbox/ for reading and keeps it open,
   * optionally starts one child shell that just sleeps,
+  * optionally starts a number of child processes that just sleep,
   * waits, then exits.
 
 It talks to the test harness over stdin / stdout with one JSON line per event.
@@ -21,6 +22,7 @@ import time
 
 open_handles = []
 child = None
+burst_children = []
 
 
 def say(**event):
@@ -34,9 +36,17 @@ def open_and_hold(path):
     say(event="opened", path=path, time=time.time())
 
 
+def spawn_burst(count, lifetime):
+    """Start *count* child processes that only sleep (they end on their own)."""
+    for _ in range(count):
+        burst_children.append(subprocess.Popen(["/bin/sleep", str(int(lifetime))]))
+    say(event="burst", count=count, time=time.time())
+
+
 def stop_child():
-    if child is not None and child.poll() is None:
-        child.terminate()
+    for process in [child] + burst_children:
+        if process is not None and process.poll() is None:
+            process.terminate()
 
 
 def on_terminate(_signum, _frame):
@@ -82,6 +92,8 @@ def main():
             command, _, argument = line.strip().partition(" ")
             if command == "open":
                 open_and_hold(argument)
+            elif command == "burst":
+                spawn_burst(int(argument), max(1.0, deadline - time.time()))
             elif command == "quit":
                 break
     finally:

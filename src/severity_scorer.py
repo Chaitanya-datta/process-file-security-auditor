@@ -7,6 +7,7 @@ The scoring is deliberately small enough to explain in one breath:
   1. Each triggered rule has a base level
          unusual parent                      -> MEDIUM
          suspicious execution location       -> MEDIUM
+         process creation burst              -> MEDIUM
          sensitive file (tagged "low")       -> LOW
          sensitive file (default, "high")    -> HIGH
          owner / permission change           -> HIGH
@@ -27,7 +28,8 @@ _RANK = {level: index for index, level in enumerate(config.SEVERITY_ORDER)}
 
 def _base_level(finding: dict) -> str:
     rule = finding["rule"]
-    if rule in (config.RULE_UNUSUAL_PARENT, config.RULE_SUSPICIOUS_LOCATION):
+    if rule in (config.RULE_UNUSUAL_PARENT, config.RULE_SUSPICIOUS_LOCATION,
+                config.RULE_PROCESS_BURST):
         return config.MEDIUM
     if rule == config.RULE_OWNER_CHANGE:
         return config.HIGH
@@ -54,6 +56,7 @@ class SeverityScorer:
             explanation = {
                 config.RULE_UNUSUAL_PARENT: "Unusual parent process on its own",
                 config.RULE_SUSPICIOUS_LOCATION: "Program running from a suspicious location on its own",
+                config.RULE_PROCESS_BURST: "Burst of child-process creation on its own",
                 config.RULE_OWNER_CHANGE: "Owner / permission change on its own",
                 config.RULE_SENSITIVE_FILE: (
                     "Access to a low-sensitivity watched file"

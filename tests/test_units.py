@@ -15,6 +15,7 @@ from src import config
 from src.action_advisor import SuggestedActionAdvisor
 from src.alert_maker import AlertMaker
 from src.auto_response import AutoResponseModule
+from src.burst_detector import ProcessBurstDetector
 from src.exec_location_detector import SuspiciousLocationDetector
 from src.models import ProcessRecord, Snapshot
 from src.owner_detector import OwnerChangeDetector
@@ -123,6 +124,46 @@ class SuspiciousLocationTest(unittest.TestCase):
         self.assertTrue(os.path.isabs(me.exe))
 
 
+class ProcessBurstTest(unittest.TestCase):
+    def detector(self):
+        return ProcessBurstDetector(threshold=5, window_seconds=10, ignored_parents=["launchd"])
+
+    @staticmethod
+    def children(parent_pid, count, first_pid=1000, age=1.0):
+        now = time.time()
+        return [record(first_pid + i, name="sleep", ppid=parent_pid, created=now - age) for i in range(count)]
+
+    def test_burst_at_threshold_is_flagged_on_the_parent(self):
+        findings = self.detector().check(snapshot(record(90, name="bash"), *self.children(90, 5)))
+        self.assertEqual([f.pid for f in findings], [90])
+        details = findings[0].details
+        self.assertEqual((details["child_count"], details["threshold"], details["window_seconds"]), (5, 5, 10))
+
+    def test_below_threshold_is_not_flagged(self):
+        self.assertEqual(self.detector().check(snapshot(record(90), *self.children(90, 4))), [])
+
+    def test_old_children_are_not_counted(self):
+        self.assertEqual(self.detector().check(snapshot(record(90), *self.children(90, 8, age=60))), [])
+
+    def test_children_seen_over_several_polls_are_added_up_even_if_they_exit(self):
+        detector, parent = self.detector(), record(90)
+        self.assertEqual(detector.check(snapshot(parent, *self.children(90, 3, first_pid=1000))), [])
+        # The first three children have exited; two new ones appear.
+        findings = detector.check(snapshot(parent, *self.children(90, 2, first_pid=2000)))
+        self.assertEqual(findings[0].details["child_count"], 5)
+
+    def test_same_burst_is_reported_only_once(self):
+        detector = self.detector()
+        snap = snapshot(record(90), *self.children(90, 6))
+        self.assertEqual(len(detector.check(snap)), 1)
+        self.assertEqual(detector.check(snap), [])
+
+    def test_ignored_parent_and_vanished_parent_are_safe(self):
+        detector = self.detector()
+        self.assertEqual(detector.check(snapshot(record(1, name="launchd"), *self.children(1, 9))), [])
+        self.assertEqual(detector.check(snapshot(*self.children(4242, 9))), [])   # parent not in snapshot
+
+
 class PipelineLogicTest(unittest.TestCase):
     def make_alert(self, *records, baseline=None):
         owner, files, parent = OwnerChangeDetector(), SensitiveFileDetector(), UnusualParentDetector()
@@ -154,6 +195,17 @@ class PipelineLogicTest(unittest.TestCase):
         critical = self.make_alert(record(11, owner="root", euid=0, files=[WATCHED], exe=tmp_exe),
                                    baseline=[record(11, exe=tmp_exe)])
         self.assertEqual([a.severity for a in critical], [config.CRITICAL])
+
+    def test_process_burst_alone_is_medium_with_suggestion_only(self):
+        now = time.time()
+        snap = snapshot(record(20, name="bash"),
+                        *[record(2000 + i, name="sleep", ppid=20, created=now - 1) for i in range(5)])
+        findings = ProcessBurstDetector(5, 10, []).check(snap)
+        alert = AlertMaker("unit", cooldown_seconds=60).build(findings, snap)[0]
+        SeverityScorer().score(alert)
+        SuggestedActionAdvisor().advise(alert)
+        self.assertEqual((alert.pid, alert.rules, alert.severity), (20, [config.RULE_PROCESS_BURST], config.MEDIUM))
+        self.assertEqual((alert.response_type, alert.action_code), ("SUGGESTED_ACTION", "NONE"))
 
     def test_sensitive_file_alone_is_high_and_low_tag_is_low(self):
         self.assertEqual(self.make_alert(record(3, files=[WATCHED]))[0].severity, config.HIGH)
