@@ -102,6 +102,12 @@ class Fixture:
         self.popen.stdin.flush()
         return float(_wait_event(self._events, "burst")["time"])
 
+    def burn_cpu(self, seconds: float) -> float:
+        """Ask the process to keep one CPU core busy; returns when it started."""
+        self.popen.stdin.write(f"cpu {seconds}\n")
+        self.popen.stdin.flush()
+        return float(_wait_event(self._events, "burning")["time"])
+
     def state(self) -> str:
         """Real OS state of the process: 'running', 'stopped', 'gone', ..."""
         return process_state(self.pid)
@@ -280,8 +286,9 @@ class Harness:
                 if a.get("pid") == pid and a.get("timestamp", 0) >= since]
 
     def wait_for_alert(self, pid: int, since: float,
-                       predicate: Callable[[dict], bool] = lambda alert: True) -> Optional[dict]:
-        deadline = time.time() + self.timeout
+                       predicate: Callable[[dict], bool] = lambda alert: True,
+                       timeout: Optional[float] = None) -> Optional[dict]:
+        deadline = time.time() + (timeout or self.timeout)
         while time.time() < deadline:
             for alert in self.alerts_for(pid, since):
                 if predicate(alert):

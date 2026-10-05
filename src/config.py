@@ -50,6 +50,7 @@ RULE_SENSITIVE_FILE = "SENSITIVE_FILE"
 RULE_UNUSUAL_PARENT = "UNUSUAL_PARENT"
 RULE_SUSPICIOUS_LOCATION = "SUSPICIOUS_EXEC_LOCATION"
 RULE_PROCESS_BURST = "PROCESS_BURST"
+RULE_RESOURCE_ANOMALY = "RESOURCE_ANOMALY"
 
 LOW, MEDIUM, HIGH, CRITICAL = "LOW", "MEDIUM", "HIGH", "CRITICAL"
 SEVERITY_ORDER = [LOW, MEDIUM, HIGH, CRITICAL]
@@ -95,6 +96,10 @@ class Settings:
     process_burst_threshold: int = 10
     process_burst_window_seconds: float = 10.0
     process_burst_ignored_parents: List[str] = field(default_factory=lambda: ["launchd", "kernel_task"])
+    # Resource Usage Anomaly: above a threshold for this many polls in a row.
+    resource_cpu_threshold_percent: float = 90.0      # 100 = one full CPU core
+    resource_memory_threshold_percent: float = 80.0   # share of physical RAM
+    resource_sustained_cycles: int = 5
     auto_response_action: str = "suspend"      # "suspend" or "terminate"
     auto_response_scope: str = "test_only"     # "test_only" or "all_unprotected"
     log_dir: Path = PROJECT_ROOT / "logs"
@@ -135,6 +140,10 @@ def load_settings() -> Settings:
         settings.process_burst_ignored_parents = [str(name) for name in ignored]
     else:
         _warn("settings.json: 'process_burst_ignored_parents' must be a list - using the default.")
+
+    settings.resource_cpu_threshold_percent = number("resource_cpu_threshold_percent", 90.0, 1.0)
+    settings.resource_memory_threshold_percent = number("resource_memory_threshold_percent", 80.0, 1.0)
+    settings.resource_sustained_cycles = int(number("resource_sustained_cycles", 5, 1))
 
     action = data.get("auto_response_action", "suspend")
     if action in ("suspend", "terminate"):

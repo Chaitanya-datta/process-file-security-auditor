@@ -29,6 +29,7 @@ class ProcessRecord:
     open_files_readable: bool = True    # False if macOS denied access
     cpu_percent: float = 0.0
     memory_mb: float = 0.0
+    memory_percent: float = 0.0         # share of physical RAM
     create_time: float = 0.0
     status: str = ""
     is_test_process: bool = False       # started by the project's test framework

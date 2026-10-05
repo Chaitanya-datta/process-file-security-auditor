@@ -22,6 +22,7 @@ from src.owner_detector import OwnerChangeDetector
 from src.parent_detector import UnusualParentDetector
 from src.process_watcher import ProcessWatcher
 from src.protected_processes import ProtectedProcessList
+from src.resource_detector import ResourceAnomalyDetector
 from src.sensitive_file_detector import SensitiveFileDetector
 from src.severity_scorer import SeverityScorer
 
@@ -30,10 +31,10 @@ WATCHED_LOW = config.resolve_path("tests/sandbox/sensitive/fake_notes.txt")
 
 
 def record(pid, name="proc", owner="alice", euid=501, ppid=1, files=(), created=100.0, test=False,
-           exe="/usr/bin/proc"):
+           exe="/usr/bin/proc", cpu=0.0, mem=0.0):
     return ProcessRecord(pid=pid, name=name, owner=owner, real_uid=501, effective_uid=euid,
                          ppid=ppid, open_files=list(files), create_time=created, is_test_process=test,
-                         exe=exe)
+                         exe=exe, cpu_percent=cpu, memory_percent=mem)
 
 
 def snapshot(*records):
@@ -164,6 +165,45 @@ class ProcessBurstTest(unittest.TestCase):
         self.assertEqual(detector.check(snapshot(*self.children(4242, 9))), [])   # parent not in snapshot
 
 
+class ResourceAnomalyTest(unittest.TestCase):
+    def detector(self):
+        return ResourceAnomalyDetector(cpu_threshold=90, memory_threshold=80, sustained_cycles=3)
+
+    def feed(self, detector, *cpu_readings, mem=0.0, pid=95, created=100.0):
+        return [len(detector.check(snapshot(record(pid, cpu=cpu, mem=mem, created=created))))
+                for cpu in cpu_readings]
+
+    def test_single_high_reading_does_not_alert(self):
+        self.assertEqual(self.feed(self.detector(), 99, 5, 99, 5), [0, 0, 0, 0])
+
+    def test_alerts_only_after_required_consecutive_polls(self):
+        self.assertEqual(self.feed(self.detector(), 95, 96, 97), [0, 0, 1])
+
+    def test_a_normal_reading_resets_the_count(self):
+        self.assertEqual(self.feed(self.detector(), 95, 95, 10, 95, 95), [0, 0, 0, 0, 0])
+
+    def test_reported_once_per_episode_and_again_after_recovery(self):
+        self.assertEqual(self.feed(self.detector(), 95, 95, 95, 95, 95, 10, 95, 95, 95),
+                         [0, 0, 1, 0, 0, 0, 0, 0, 1])
+
+    def test_memory_threshold_and_details(self):
+        detector = self.detector()
+        self.feed(detector, 5, 5, mem=85.0)
+        finding = detector.check(snapshot(record(95, cpu=5, mem=85.0)))[0]
+        self.assertEqual(finding.details["exceeded"], ["memory"])
+        self.assertEqual((finding.details["memory_percent"], finding.details["memory_threshold_percent"],
+                          finding.details["consecutive_cycles"]), (85.0, 80, 3))
+
+    def test_reused_pid_starts_a_new_count(self):
+        detector = self.detector()
+        self.feed(detector, 95, 95)
+        self.assertEqual(self.feed(detector, 95, created=200.0), [0])
+
+    def test_watcher_reports_memory_percent(self):
+        me = ProcessWatcher().snapshot().records[os.getpid()]
+        self.assertTrue(0 < me.memory_percent < 100)
+
+
 class PipelineLogicTest(unittest.TestCase):
     def make_alert(self, *records, baseline=None):
         owner, files, parent = OwnerChangeDetector(), SensitiveFileDetector(), UnusualParentDetector()
@@ -205,6 +245,17 @@ class PipelineLogicTest(unittest.TestCase):
         SeverityScorer().score(alert)
         SuggestedActionAdvisor().advise(alert)
         self.assertEqual((alert.pid, alert.rules, alert.severity), (20, [config.RULE_PROCESS_BURST], config.MEDIUM))
+        self.assertEqual((alert.response_type, alert.action_code), ("SUGGESTED_ACTION", "NONE"))
+
+    def test_resource_anomaly_alone_is_medium_with_suggestion_only(self):
+        detector, findings = ResourceAnomalyDetector(90, 80, 2), []
+        for _ in range(2):
+            snap = snapshot(record(21, cpu=150.0))
+            findings = detector.check(snap)
+        alert = AlertMaker("unit", cooldown_seconds=60).build(findings, snap)[0]
+        SeverityScorer().score(alert)
+        SuggestedActionAdvisor().advise(alert)
+        self.assertEqual((alert.rules, alert.severity), ([config.RULE_RESOURCE_ANOMALY], config.MEDIUM))
         self.assertEqual((alert.response_type, alert.action_code), ("SUGGESTED_ACTION", "NONE"))
 
     def test_sensitive_file_alone_is_high_and_low_tag_is_low(self):

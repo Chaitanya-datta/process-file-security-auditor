@@ -4,6 +4,7 @@ This is a harmless stand-in for "a process doing something". It only ever:
   * opens a file inside tests/sandbox/ for reading and keeps it open,
   * optionally starts one child shell that just sleeps,
   * optionally starts a number of child processes that just sleep,
+  * optionally keeps one CPU core busy for a limited time,
   * waits, then exits.
 
 It talks to the test harness over stdin / stdout with one JSON line per event.
@@ -18,6 +19,7 @@ import select
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 open_handles = []
@@ -41,6 +43,18 @@ def spawn_burst(count, lifetime):
     for _ in range(count):
         burst_children.append(subprocess.Popen(["/bin/sleep", str(int(lifetime))]))
     say(event="burst", count=count, time=time.time())
+
+
+def burn_cpu(seconds):
+    """Keep one CPU core busy for *seconds* on a background thread, then stop."""
+    stop_at = time.time() + seconds
+
+    def spin():
+        while time.time() < stop_at:
+            sum(range(2000))
+
+    threading.Thread(target=spin, daemon=True).start()
+    say(event="burning", seconds=seconds, time=time.time())
 
 
 def stop_child():
@@ -94,6 +108,8 @@ def main():
                 open_and_hold(argument)
             elif command == "burst":
                 spawn_burst(int(argument), max(1.0, deadline - time.time()))
+            elif command == "cpu":
+                burn_cpu(min(float(argument), max(1.0, deadline - time.time())))
             elif command == "quit":
                 break
     finally:

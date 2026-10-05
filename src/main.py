@@ -39,6 +39,7 @@ from .owner_detector import OwnerChangeDetector
 from .parent_detector import UnusualParentDetector
 from .process_watcher import ProcessWatcher
 from .protected_processes import ProtectedProcessList
+from .resource_detector import ResourceAnomalyDetector
 from .sensitive_file_detector import SensitiveFileDetector
 from .severity_scorer import SeverityScorer
 
@@ -81,6 +82,11 @@ class Auditor:
             settings.process_burst_window_seconds,
             settings.process_burst_ignored_parents,
         )
+        self.resource_detector = ResourceAnomalyDetector(
+            settings.resource_cpu_threshold_percent,
+            settings.resource_memory_threshold_percent,
+            settings.resource_sustained_cycles,
+        )
         self.alert_maker = AlertMaker(self.session_id, settings.alert_cooldown_seconds)
         self.scorer = SeverityScorer()
         self.advisor = SuggestedActionAdvisor()
@@ -102,6 +108,7 @@ class Auditor:
             + self.parent_detector.check(snapshot)
             + self.location_detector.check(snapshot)
             + self.burst_detector.check(snapshot)
+            + self.resource_detector.check(snapshot)
         )
         alerts = self.alert_maker.build(findings, snapshot)
 
@@ -131,6 +138,7 @@ class Auditor:
                     "pid": r.pid, "name": r.name, "owner": r.owner or "-",
                     "ppid": r.ppid, "parent_name": r.parent_name,
                     "cpu_percent": r.cpu_percent, "memory_mb": r.memory_mb,
+                    "memory_percent": r.memory_percent,
                     "status": r.status, "is_test_process": r.is_test_process,
                 }
                 for r in snapshot.records.values()
@@ -156,6 +164,9 @@ class Auditor:
             "suspicious_locations": self.location_detector.location_count,
             "process_burst_threshold": self.settings.process_burst_threshold,
             "process_burst_window_seconds": self.settings.process_burst_window_seconds,
+            "resource_cpu_threshold_percent": self.settings.resource_cpu_threshold_percent,
+            "resource_memory_threshold_percent": self.settings.resource_memory_threshold_percent,
+            "resource_sustained_cycles": self.settings.resource_sustained_cycles,
             "processes_monitored": len(processes),
             "open_files_unreadable": snapshot.open_files_denied if snapshot else 0,
             "baseline_size": self.owner_detector.baseline_size,

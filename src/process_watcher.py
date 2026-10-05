@@ -45,6 +45,8 @@ class ProcessWatcher:
     def __init__(self, test_mode: bool = False) -> None:
         # The hook object only exists in --test-mode (see src/test_hooks.py).
         self._test_hooks: Optional[TestHooks] = TestHooks() if test_mode else None
+        # Physical RAM, read once; used to express each process's memory as a percentage.
+        self._total_memory_bytes: int = psutil.virtual_memory().total
 
     def snapshot(self) -> Snapshot:
         """Read the current state of every running process."""
@@ -77,8 +79,7 @@ class ProcessWatcher:
                 record.parent_name = parent.name
         return snapshot
 
-    @staticmethod
-    def _read_process(proc: psutil.Process, snapshot: Snapshot) -> ProcessRecord:
+    def _read_process(self, proc: psutil.Process, snapshot: Snapshot) -> ProcessRecord:
         # oneshot() makes psutil fetch several attributes with one system call.
         with proc.oneshot():
             pid = proc.pid
@@ -116,6 +117,7 @@ class ProcessWatcher:
             open_files_readable=open_files_readable,
             cpu_percent=round(cpu_percent or 0.0, 1),
             memory_mb=round(memory.rss / BYTES_PER_MB, 1) if memory else 0.0,
+            memory_percent=round(memory.rss / self._total_memory_bytes * 100, 2) if memory else 0.0,
             create_time=create_time or 0.0,
             status=status,
             is_test_process=config.TEST_PROCESS_MARKER in cmdline_parts,

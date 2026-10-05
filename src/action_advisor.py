@@ -31,6 +31,9 @@ RULE_SUGGESTIONS = {
     config.RULE_PROCESS_BURST:
         "Check what the parent is running and whether starting this many child "
         "processes is expected (a build or script) or runaway behaviour.",
+    config.RULE_RESOURCE_ANOMALY:
+        "Check in Activity Monitor whether this heavy CPU / memory use is expected "
+        "work or a stuck / runaway process.",
 }
 
 
